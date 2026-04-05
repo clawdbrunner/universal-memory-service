@@ -123,8 +123,9 @@ class TestSearchEndpoint:
         assert response.status_code == 200
         assert response.json()["results"] == []
 
-    def test_search_missing_query(self, client):
-        response = client.post("/api/v1/search", json={})
+    def test_search_missing_query(self, app):
+        c = TestClient(app, raise_server_exceptions=False)
+        response = c.post("/api/v1/search", json={})
         # from_dict will create SearchRequest without query — should fail or use default
         # The endpoint should handle this gracefully
         assert response.status_code in (200, 422, 500)
@@ -222,7 +223,7 @@ class TestReadEndpoint:
     def test_read_existing_file(self, app, client):
         app.state.file_writer.read_file = AsyncMock(return_value="file contents here")
 
-        with patch("universal_memory.api.routes.Path") as MockPath:
+        with patch("pathlib.Path") as MockPath:
             mock_full = MagicMock()
             mock_full.is_file.return_value = True
             MockPath.return_value.__truediv__ = MagicMock(return_value=mock_full)
@@ -235,7 +236,7 @@ class TestReadEndpoint:
         assert data["path"] == "shared/MEMORY.md"
 
     def test_read_not_found(self, app, client):
-        with patch("universal_memory.api.routes.Path") as MockPath:
+        with patch("pathlib.Path") as MockPath:
             mock_full = MagicMock()
             mock_full.is_file.return_value = False
             MockPath.return_value.__truediv__ = MagicMock(return_value=mock_full)
@@ -283,7 +284,7 @@ class TestEditEndpoint:
         app.state.indexer.index_file = AsyncMock(return_value=2)
         app.state.graphiti_writer.write = AsyncMock(return_value={})
 
-        with patch("universal_memory.api.routes.Path") as MockPath:
+        with patch("pathlib.Path") as MockPath:
             mock_full = MagicMock()
             mock_full.is_file.return_value = True
             mock_full.__str__ = MagicMock(return_value="/tmp/test.md")
@@ -305,7 +306,7 @@ class TestEditEndpoint:
         assert data["graphiti_updated"] is True
 
     def test_edit_file_not_found(self, app, client):
-        with patch("universal_memory.api.routes.Path") as MockPath:
+        with patch("pathlib.Path") as MockPath:
             mock_full = MagicMock()
             mock_full.is_file.return_value = False
             MockPath.return_value.__truediv__ = MagicMock(return_value=mock_full)
@@ -326,7 +327,7 @@ class TestEditEndpoint:
             side_effect=ValueError("old_text not found")
         )
 
-        with patch("universal_memory.api.routes.Path") as MockPath:
+        with patch("pathlib.Path") as MockPath:
             mock_full = MagicMock()
             mock_full.is_file.return_value = True
             MockPath.return_value.__truediv__ = MagicMock(return_value=mock_full)
@@ -346,7 +347,7 @@ class TestEditEndpoint:
         app.state.file_writer.edit_content = AsyncMock(return_value=True)
         app.state.indexer.index_file = AsyncMock(return_value=1)
 
-        with patch("universal_memory.api.routes.Path") as MockPath:
+        with patch("pathlib.Path") as MockPath:
             mock_full = MagicMock()
             mock_full.is_file.return_value = True
             mock_full.__str__ = MagicMock(return_value="/tmp/test.md")
@@ -428,7 +429,9 @@ class TestIngestEndpoint:
 
 class TestStatusEndpoint:
     def test_status_healthy(self, app, client):
-        with patch("universal_memory.api.routes.get_stats", new_callable=AsyncMock) as mock_stats:
+        app.state.start_time = time.time() - 10  # ensure uptime > 0
+
+        with patch("universal_memory.db.get_stats", new_callable=AsyncMock) as mock_stats:
             mock_stats.return_value = {
                 "files_indexed": 42,
                 "chunks": 150,
@@ -448,7 +451,7 @@ class TestStatusEndpoint:
     def test_status_includes_watcher_state(self, app, client):
         type(app.state.watcher).running = PropertyMock(return_value=False)
 
-        with patch("universal_memory.api.routes.get_stats", new_callable=AsyncMock) as mock_stats:
+        with patch("universal_memory.db.get_stats", new_callable=AsyncMock) as mock_stats:
             mock_stats.return_value = {}
 
             response = client.get("/api/v1/status")
@@ -481,23 +484,25 @@ class TestReindexEndpoint:
 
 
 class TestAPIGracefulDegradation:
-    def test_search_pipeline_error(self, app, client):
+    def test_search_pipeline_error(self, app):
         app.state.pipeline.search = AsyncMock(
             side_effect=RuntimeError("pipeline exploded")
         )
 
-        response = client.post("/api/v1/search", json={"query": "test"})
+        c = TestClient(app, raise_server_exceptions=False)
+        response = c.post("/api/v1/search", json={"query": "test"})
 
         # FastAPI returns 500 for unhandled exceptions
         assert response.status_code == 500
 
-    def test_write_indexer_error_still_writes(self, app, client):
+    def test_write_indexer_error_still_writes(self, app):
         app.state.file_writer.resolve_path = MagicMock(return_value=Path("/tmp/f.md"))
         app.state.file_writer.write_content = AsyncMock()
         app.state.indexer.index_file = AsyncMock(side_effect=RuntimeError("db error"))
         app.state.sync_engine.sync_file = AsyncMock(return_value=[])
 
-        response = client.post(
+        c = TestClient(app, raise_server_exceptions=False)
+        response = c.post(
             "/api/v1/write",
             json={"content": "test", "author": "alice", "targets": ["file"]},
         )
@@ -505,7 +510,7 @@ class TestAPIGracefulDegradation:
         # Indexing failure propagates — the route doesn't catch it
         assert response.status_code == 500
 
-    def test_ingest_partial_failure(self, app, client):
+    def test_ingest_partial_failure(self, app):
         call_count = 0
 
         async def write_side_effect(**kwargs):
@@ -517,7 +522,8 @@ class TestAPIGracefulDegradation:
 
         app.state.graphiti_writer.write = AsyncMock(side_effect=write_side_effect)
 
-        response = client.post(
+        c = TestClient(app, raise_server_exceptions=False)
+        response = c.post(
             "/api/v1/ingest",
             json={
                 "messages": [
