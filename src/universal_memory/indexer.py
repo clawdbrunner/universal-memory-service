@@ -4,7 +4,12 @@ from __future__ import annotations
 
 import hashlib
 import logging
+from datetime import datetime, timezone
 from pathlib import Path
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 from .chunker import chunk_markdown
 from .config import get_config
@@ -20,6 +25,21 @@ from .retrieval.vector_store import VectorStore
 logger = logging.getLogger(__name__)
 
 
+class IndexResult:
+    """Result of an indexing operation."""
+
+    __slots__ = ("chunks_stored", "embeddings_ok")
+
+    def __init__(self, chunks_stored: int, embeddings_ok: bool) -> None:
+        self.chunks_stored = chunks_stored
+        self.embeddings_ok = embeddings_ok
+
+    @property
+    def is_partial(self) -> bool:
+        """True when chunks were stored but embeddings failed."""
+        return self.chunks_stored > 0 and not self.embeddings_ok
+
+
 class Indexer:
     """Indexes files into the chunk/vector/FTS stores."""
 
@@ -31,27 +51,29 @@ class Indexer:
         self._embeddings = embedding_service
         self._vectors = vector_store
         self._config = get_config()
+        self._last_embedding_success: str | None = None
+        self._last_embedding_failure: str | None = None
 
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
 
-    async def index_file(self, file_path: str) -> int:
+    async def index_file(self, file_path: str) -> IndexResult:
         """Index a single file if its content has changed.
 
-        Returns the number of chunks stored (0 if unchanged).
+        Returns an IndexResult with chunks_stored count and embedding status.
         """
         path = Path(file_path)
         if not path.is_file():
             logger.warning("index_file: not a file: %s", file_path)
-            return 0
+            return IndexResult(0, True)
 
         content = path.read_text(encoding="utf-8", errors="replace")
         content_hash = hashlib.sha256(content.encode()).hexdigest()
 
         state = await get_file_state(file_path)
         if state and state["content_hash"] == content_hash:
-            return 0  # unchanged
+            return IndexResult(0, True)  # unchanged
 
         # Remove stale data
         await delete_chunks_for_file(file_path)
@@ -66,7 +88,7 @@ class Indexer:
         )
         if not chunks:
             await update_file_state(file_path, content_hash, 0)
-            return 0
+            return IndexResult(0, True)
 
         # Store chunks (triggers FTS via DB triggers)
         await insert_chunks(chunks)
@@ -74,13 +96,27 @@ class Indexer:
         # Embeddings
         texts = [c.content for c in chunks]
         embeddings = await self._embeddings.generate(texts)
-        for chunk, emb in zip(chunks, embeddings):
-            if emb:
-                await self._vectors.upsert(chunk.id, emb)
+        embeddings_ok = len(embeddings) > 0
+        if embeddings_ok:
+            for chunk, emb in zip(chunks, embeddings):
+                if emb:
+                    await self._vectors.upsert(chunk.id, emb)
+            self._last_embedding_success = _now()
+        else:
+            self._last_embedding_failure = _now()
+            logger.warning("Embeddings failed for %s; chunks stored for BM25 only", file_path)
 
         await update_file_state(file_path, content_hash, len(chunks))
-        logger.info("Indexed %s → %d chunks", file_path, len(chunks))
-        return len(chunks)
+        logger.info("Indexed %s → %d chunks (embeddings=%s)", file_path, len(chunks), embeddings_ok)
+        return IndexResult(len(chunks), embeddings_ok)
+
+    @property
+    def embedding_health(self) -> dict[str, str | None]:
+        """Return last embedding success/failure timestamps."""
+        return {
+            "last_success": self._last_embedding_success,
+            "last_failure": self._last_embedding_failure,
+        }
 
     async def index_directory(self, directory: str | None = None) -> int:
         """Walk a directory and index all matching files.
@@ -92,7 +128,8 @@ class Indexer:
         total = 0
         for path in sorted(root.rglob("*")):
             if path.is_file() and path.suffix in extensions:
-                total += await self.index_file(str(path))
+                result = await self.index_file(str(path))
+                total += result.chunks_stored
         return total
 
     async def remove_file(self, file_path: str) -> None:

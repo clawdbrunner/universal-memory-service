@@ -168,6 +168,7 @@ class WriteResponse:
     written_to: dict[str, Any] = field(default_factory=dict)
     synced_to: list[str] = field(default_factory=list)
     index_updated: bool = False
+    index_status: str = "full"
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -175,6 +176,7 @@ class WriteResponse:
             "written_to": self.written_to,
             "synced_to": self.synced_to,
             "index_updated": self.index_updated,
+            "index_status": self.index_status,
         }
 
 

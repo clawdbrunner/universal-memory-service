@@ -84,12 +84,19 @@ class EmbeddingService:
             from google import genai
 
             cfg = self._config.embedding
+            # Lookup order: configured env var -> GOOGLE_API_KEY -> GEMINI_API_KEY
             api_key = os.environ.get(cfg.api_key_env)
-            if not api_key:
-                logger.warning("Gemini API key not found in env var %s", cfg.api_key_env)
-                return None
+            if not api_key and cfg.api_key_env != "GOOGLE_API_KEY":
+                api_key = os.environ.get("GOOGLE_API_KEY")
+            if not api_key and cfg.api_key_env != "GEMINI_API_KEY":
+                api_key = os.environ.get("GEMINI_API_KEY")
 
-            client = genai.Client(api_key=api_key)
+            # If no explicit key found, let the SDK try its own env lookup
+            if api_key:
+                client = genai.Client(api_key=api_key)
+            else:
+                # google-genai Client checks GOOGLE_API_KEY natively
+                client = genai.Client()
             all_embeddings: list[list[float]] = []
 
             # Batch up to batch_size items per request

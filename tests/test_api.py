@@ -11,6 +11,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from universal_memory.api.routes import router
+from universal_memory.indexer import IndexResult
 from universal_memory.models import SearchResponse, SearchResult, WriteResponse
 
 
@@ -142,7 +143,7 @@ class TestWriteEndpoint:
             return_value=Path("/tmp/test-memory-data/agents/alice/logs/2025-01-15.md")
         )
         app.state.file_writer.write_content = AsyncMock(return_value=Path("/tmp/out.md"))
-        app.state.indexer.index_file = AsyncMock(return_value=3)
+        app.state.indexer.index_file = AsyncMock(return_value=IndexResult(3, True))
         app.state.sync_engine.sync_file = AsyncMock(return_value=[])
         app.state.graphiti_writer.write = AsyncMock(return_value={"ok": True})
 
@@ -166,7 +167,7 @@ class TestWriteEndpoint:
     def test_write_file_only(self, app, client):
         app.state.file_writer.resolve_path = MagicMock(return_value=Path("/tmp/out.md"))
         app.state.file_writer.write_content = AsyncMock()
-        app.state.indexer.index_file = AsyncMock(return_value=1)
+        app.state.indexer.index_file = AsyncMock(return_value=IndexResult(1, True))
         app.state.sync_engine.sync_file = AsyncMock(return_value=[])
 
         response = client.post(
@@ -201,7 +202,7 @@ class TestWriteEndpoint:
     def test_write_triggers_indexing(self, app, client):
         app.state.file_writer.resolve_path = MagicMock(return_value=Path("/tmp/f.md"))
         app.state.file_writer.write_content = AsyncMock()
-        app.state.indexer.index_file = AsyncMock(return_value=5)
+        app.state.indexer.index_file = AsyncMock(return_value=IndexResult(5, True))
         app.state.sync_engine.sync_file = AsyncMock(return_value=[])
         app.state.graphiti_writer.write = AsyncMock(return_value={})
 
@@ -211,7 +212,27 @@ class TestWriteEndpoint:
         )
 
         assert response.status_code == 200
-        assert response.json()["index_updated"] is True
+        data = response.json()
+        assert data["index_updated"] is True
+        assert data["index_status"] == "full"
+
+    def test_write_partial_indexing(self, app, client):
+        """When embeddings fail, index_status should be 'partial'."""
+        app.state.file_writer.resolve_path = MagicMock(return_value=Path("/tmp/f.md"))
+        app.state.file_writer.write_content = AsyncMock()
+        app.state.indexer.index_file = AsyncMock(return_value=IndexResult(5, False))
+        app.state.sync_engine.sync_file = AsyncMock(return_value=[])
+        app.state.graphiti_writer.write = AsyncMock(return_value={})
+
+        response = client.post(
+            "/api/v1/write",
+            json={"content": "test", "author": "alice"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["index_updated"] is True
+        assert data["index_status"] == "partial"
 
 
 # ---------------------------------------------------------------------------
@@ -281,7 +302,7 @@ class TestListEndpoint:
 class TestEditEndpoint:
     def test_edit_success(self, app, client):
         app.state.file_writer.edit_content = AsyncMock(return_value=True)
-        app.state.indexer.index_file = AsyncMock(return_value=2)
+        app.state.indexer.index_file = AsyncMock(return_value=IndexResult(2, True))
         app.state.graphiti_writer.write = AsyncMock(return_value={})
 
         with patch("pathlib.Path") as MockPath:
@@ -345,7 +366,7 @@ class TestEditEndpoint:
 
     def test_edit_without_graphiti_target(self, app, client):
         app.state.file_writer.edit_content = AsyncMock(return_value=True)
-        app.state.indexer.index_file = AsyncMock(return_value=1)
+        app.state.indexer.index_file = AsyncMock(return_value=IndexResult(1, True))
 
         with patch("pathlib.Path") as MockPath:
             mock_full = MagicMock()
@@ -430,6 +451,10 @@ class TestIngestEndpoint:
 class TestStatusEndpoint:
     def test_status_healthy(self, app, client):
         app.state.start_time = time.time() - 10  # ensure uptime > 0
+        app.state.indexer.embedding_health = {
+            "last_success": "2025-01-15T10:00:00+00:00",
+            "last_failure": None,
+        }
 
         with patch("universal_memory.db.get_stats", new_callable=AsyncMock) as mock_stats:
             mock_stats.return_value = {
@@ -447,9 +472,12 @@ class TestStatusEndpoint:
         assert data["uptime_seconds"] > 0
         assert data["index"]["files_indexed"] == 42
         assert data["file_watcher"]["running"] is True
+        assert data["embedding_provider"]["last_success"] is not None
+        assert data["embedding_provider"]["last_failure"] is None
 
     def test_status_includes_watcher_state(self, app, client):
         type(app.state.watcher).running = PropertyMock(return_value=False)
+        app.state.indexer.embedding_health = {"last_success": None, "last_failure": None}
 
         with patch("universal_memory.db.get_stats", new_callable=AsyncMock) as mock_stats:
             mock_stats.return_value = {}

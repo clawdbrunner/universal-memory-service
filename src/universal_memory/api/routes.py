@@ -71,8 +71,9 @@ async def write(request: Request, body: dict) -> dict:
         result.written_to["file"] = str(path)
 
         # Index the newly written file
-        chunks = await state.indexer.index_file(str(path))
-        result.index_updated = chunks > 0
+        index_result = await state.indexer.index_file(str(path))
+        result.index_updated = index_result.chunks_stored > 0
+        result.index_status = "partial" if index_result.is_partial else "full"
 
         # Sync
         synced = await state.sync_engine.sync_file(str(path))
@@ -142,9 +143,14 @@ async def edit(request: Request, body: dict) -> dict:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     # Re-index after edit
-    chunks = await state.indexer.index_file(str(full))
+    index_result = await state.indexer.index_file(str(full))
 
-    result: dict[str, Any] = {"ok": True, "path": req.path, "index_updated": chunks > 0}
+    result: dict[str, Any] = {
+        "ok": True,
+        "path": req.path,
+        "index_updated": index_result.chunks_stored > 0,
+        "index_status": "partial" if index_result.is_partial else "full",
+    }
 
     if "graphiti" in req.targets:
         await state.graphiti_writer.write(
@@ -196,6 +202,7 @@ async def status(request: Request) -> dict:
         status="healthy",
         uptime_seconds=round(uptime, 2),
         index=stats,
+        embedding_provider=state.indexer.embedding_health,
         file_watcher={"running": state.watcher.running},
     )
     return resp.to_dict()
