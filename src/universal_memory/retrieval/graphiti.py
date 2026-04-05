@@ -33,50 +33,53 @@ class GraphitiClient:
         """Search the knowledge graph."""
         try:
             async with httpx.AsyncClient(timeout=self._timeout) as client:
-                resp = await client.post(
-                    f"{self._base_url}/search",
-                    json={
-                        "query": query,
-                        "group_ids": group_ids or [],
-                        "num_results": limit,
-                    },
-                )
+                payload: dict = {"query": query, "max_facts": limit}
+                if group_ids:
+                    payload["group_ids"] = group_ids
+                resp = await client.post(f"{self._base_url}/search", json=payload)
                 resp.raise_for_status()
                 data = resp.json()
                 results: list[SearchResult] = []
-                for item in data.get("results", []):
+                for item in data.get("facts", []):
                     results.append(SearchResult(
-                        chunk_id=item.get("id", ""),
-                        score=float(item.get("score", 0.0)),
+                        chunk_id="",
+                        score=1.0,
                         source="graphiti",
-                        content=item.get("content", ""),
-                        file_path=item.get("file_path", ""),
-                        metadata=item.get("metadata", {}),
+                        content=item.get("fact", ""),
+                        file_path="",
+                        metadata={"valid_at": item.get("valid_at", ""), "entities": item.get("entities", [])},
                     ))
                 return results
         except Exception:
-            logger.warning("Graphiti search unavailable", exc_info=True)
+            logger.warning("Graphiti search failed", exc_info=True)
             return []
 
     async def write(
         self,
         content: str,
-        group_ids: list[str] | None = None,
-        author: str = "",
+        group_id: str = "",
+        author: str = "assistant",
     ) -> dict:
-        """Write content to the knowledge graph."""
+        """Write content to the knowledge graph via /messages endpoint."""
+        import datetime
+
+        timestamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         try:
             async with httpx.AsyncClient(timeout=self._timeout) as client:
                 resp = await client.post(
                     f"{self._base_url}/messages",
                     json={
-                        "content": content,
-                        "group_ids": group_ids or [],
-                        "author": author,
+                        "group_id": group_id,
+                        "messages": [{
+                            "role_type": "assistant",
+                            "role": author,
+                            "content": content,
+                            "timestamp": timestamp,
+                        }],
                     },
                 )
                 resp.raise_for_status()
-                return resp.json()
+                return {"status": "accepted", "group_id": group_id}
         except Exception:
             logger.warning("Graphiti write failed", exc_info=True)
             return {}

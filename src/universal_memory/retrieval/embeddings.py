@@ -80,39 +80,47 @@ class EmbeddingService:
 
     async def _generate_gemini(self, texts: list[str]) -> list[list[float]] | None:
         """Generate embeddings via Google Gemini gemini-embedding-001."""
-        try:
-            from google import genai
+        import asyncio
 
-            cfg = self._config.embedding
-            # Lookup order: configured env var -> GOOGLE_API_KEY -> GEMINI_API_KEY
-            api_key = os.environ.get(cfg.api_key_env)
-            if not api_key and cfg.api_key_env != "GOOGLE_API_KEY":
-                api_key = os.environ.get("GOOGLE_API_KEY")
-            if not api_key and cfg.api_key_env != "GEMINI_API_KEY":
-                api_key = os.environ.get("GEMINI_API_KEY")
+        max_attempts = 2
+        for attempt in range(1, max_attempts + 1):
+            try:
+                from google import genai
 
-            # If no explicit key found, let the SDK try its own env lookup
-            if api_key:
-                client = genai.Client(api_key=api_key)
-            else:
-                # google-genai Client checks GOOGLE_API_KEY natively
-                client = genai.Client()
-            all_embeddings: list[list[float]] = []
+                cfg = self._config.embedding
+                # Lookup order: configured env var -> GOOGLE_API_KEY -> GEMINI_API_KEY
+                api_key = os.environ.get(cfg.api_key_env)
+                if not api_key and cfg.api_key_env != "GOOGLE_API_KEY":
+                    api_key = os.environ.get("GOOGLE_API_KEY")
+                if not api_key and cfg.api_key_env != "GEMINI_API_KEY":
+                    api_key = os.environ.get("GEMINI_API_KEY")
 
-            # Batch up to batch_size items per request
-            for i in range(0, len(texts), cfg.batch_size):
-                batch = texts[i : i + cfg.batch_size]
-                result = client.models.embed_content(
-                    model=cfg.model,
-                    contents=batch,
-                )
-                for emb in result.embeddings:
-                    all_embeddings.append(list(emb.values))
+                # If no explicit key found, let the SDK try its own env lookup
+                if api_key:
+                    client = genai.Client(api_key=api_key)
+                else:
+                    # google-genai Client checks GOOGLE_API_KEY natively
+                    client = genai.Client()
+                all_embeddings: list[list[float]] = []
 
-            return all_embeddings
-        except Exception:
-            logger.warning("Gemini embedding failed", exc_info=True)
-            return None
+                # Batch up to batch_size items per request
+                for i in range(0, len(texts), cfg.batch_size):
+                    batch = texts[i : i + cfg.batch_size]
+                    result = client.models.embed_content(
+                        model=cfg.model,
+                        contents=batch,
+                    )
+                    for emb in result.embeddings:
+                        all_embeddings.append(list(emb.values))
+
+                return all_embeddings
+            except Exception:
+                if attempt < max_attempts:
+                    logger.info("Gemini embedding attempt %d failed, retrying in 1s", attempt)
+                    await asyncio.sleep(1)
+                else:
+                    logger.warning("Gemini embedding failed after %d attempts", max_attempts, exc_info=True)
+                    return None
 
     async def _generate_openai(self, texts: list[str]) -> list[list[float]] | None:
         """Fallback: generate embeddings via OpenAI text-embedding-3-small."""
