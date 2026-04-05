@@ -57,11 +57,20 @@ class RetrievalPipeline:
             queries = [request.query]
         timing_ms["expand"] = (time.perf_counter() - t0) * 1000
 
-        # Derive filter_paths and group_ids from request
+        # Derive filter_paths and group_ids from request scope
         filter_paths: list[str] | None = None
         group_ids: list[str] | None = None
-        if request.department:
-            group_ids = [request.department]
+        if request.author:
+            agent_info = self._config.agents.get(request.author)
+            dept = agent_info.department if agent_info else None
+            filter_paths = [f"agents/{request.author}/", "shared/"]
+            group_ids = [f"memory-{request.author}"]
+            if dept:
+                filter_paths.append(f"departments/{dept}/")
+                group_ids.extend([f"memory-{dept}", "memory-shared"])
+        elif request.department:
+            filter_paths = [f"departments/{request.department}/", "shared/"]
+            group_ids = [f"memory-{request.department}", "memory-shared"]
 
         # Stage 2: Vector search
         t0 = time.perf_counter()
@@ -135,9 +144,16 @@ class RetrievalPipeline:
         # Filter by min_score
         final = [r for r in reranked if r.score >= request.min_score]
 
+        scope: dict[str, object] = {}
+        if filter_paths is not None:
+            scope["directories_searched"] = filter_paths
+        if group_ids is not None:
+            scope["graphiti_group_ids"] = group_ids
+
         return SearchResponse(
             results=final,
             query=request.query,
+            scope=scope,
             expanded_queries=queries,
             sources_queried=sources_queried,
             timing_ms=timing_ms,
