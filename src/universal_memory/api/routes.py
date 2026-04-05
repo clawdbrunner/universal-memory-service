@@ -65,7 +65,7 @@ async def write(request: Request, body: dict) -> dict:
         await state.file_writer.write_content(
             path=path,
             content=req.content,
-            header_format="## [{time}] {author}",
+            header_format=state.config.write.daily_log_header_format,
             author=req.author,
         )
         result.written_to["file"] = str(path)

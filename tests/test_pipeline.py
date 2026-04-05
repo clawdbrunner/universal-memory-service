@@ -58,9 +58,14 @@ def _make_chunk_data(chunk_id="c1", content="test content", file_path="test.md")
 @pytest.fixture
 def mock_config():
     cfg = MagicMock()
-    cfg.search_weights.vector = 0.40
-    cfg.search_weights.bm25 = 0.20
-    cfg.search_weights.graphiti = 0.25
+    cfg.search.weights.vector = 0.40
+    cfg.search.weights.bm25 = 0.20
+    cfg.search.weights.graphiti = 0.25
+    cfg.search.temporal_decay.enabled = True
+    cfg.search.temporal_decay.half_life_days = 30
+    cfg.search.temporal_decay.exempt_files = ["MEMORY.md"]
+    cfg.search.mmr.enabled = True
+    cfg.search.mmr.lambda_ = 0.7
     cfg.models.reranker.candidates = 30
     return cfg
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import time
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import AsyncIterator
 
 from fastapi import FastAPI
@@ -29,6 +30,16 @@ logger = logging.getLogger(__name__)
 async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     """Startup / shutdown lifecycle."""
     cfg = get_config()
+
+    # --- Logging ---
+    log_level = getattr(logging, cfg.logging.level.upper(), logging.INFO)
+    logging.basicConfig(level=log_level)
+    if cfg.logging.file:
+        log_path = Path(cfg.logging.file)
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        file_handler = logging.FileHandler(str(log_path))
+        file_handler.setLevel(log_level)
+        logging.getLogger().addHandler(file_handler)
 
     # --- Database ---
     await init_db()

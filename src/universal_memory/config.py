@@ -89,6 +89,45 @@ class SearchWeights:
 
 
 @dataclass
+class TemporalDecayConfig:
+    enabled: bool = True
+    half_life_days: int = 30
+    exempt_files: list[str] = field(default_factory=lambda: ["MEMORY.md"])
+
+
+@dataclass
+class MMRConfig:
+    enabled: bool = True
+    lambda_: float = 0.7
+
+
+@dataclass
+class SearchConfig:
+    weights: SearchWeights = field(default_factory=SearchWeights)
+    temporal_decay: TemporalDecayConfig = field(default_factory=TemporalDecayConfig)
+    mmr: MMRConfig = field(default_factory=MMRConfig)
+    default_max_results: int = 10
+    default_min_score: float = 0.3
+
+
+@dataclass
+class WriteConfig:
+    daily_log_header_format: str = "## [{time}] {author}"
+    append_newlines: int = 2
+    file_lock: bool = True
+
+
+@dataclass
+class LoggingConfig:
+    level: str = "INFO"
+    file: str = "~/.memory-service/logs/service.log"
+
+    def __post_init__(self) -> None:
+        if self.file:
+            self.file = _expand(self.file)
+
+
+@dataclass
 class GraphitiConfig:
     url: str = "http://localhost:8001"
     timeout_seconds: int = 10
@@ -109,9 +148,11 @@ class FullConfig:
     index: IndexConfig = field(default_factory=IndexConfig)
     embedding: EmbeddingConfig = field(default_factory=EmbeddingConfig)
     models: ModelConfig = field(default_factory=ModelConfig)
-    search_weights: SearchWeights = field(default_factory=SearchWeights)
+    search: SearchConfig = field(default_factory=SearchConfig)
     graphiti: GraphitiConfig = field(default_factory=GraphitiConfig)
     sync: SyncConfig = field(default_factory=SyncConfig)
+    write: WriteConfig = field(default_factory=WriteConfig)
+    logging: LoggingConfig = field(default_factory=LoggingConfig)
 
 
 # ---------------------------------------------------------------------------
@@ -184,9 +225,31 @@ def _parse_raw(raw: dict[str, Any]) -> FullConfig:
 
     search_raw = raw.get("search", {})
     weights = _dict_to_dataclass(SearchWeights, search_raw.get("weights", {}))
+    temporal_decay = _dict_to_dataclass(
+        TemporalDecayConfig, search_raw.get("temporal_decay", {})
+    )
+    mmr_raw = search_raw.get("mmr", {})
+    mmr = MMRConfig(
+        enabled=mmr_raw.get("enabled", True),
+        lambda_=mmr_raw.get("lambda", 0.7),
+    ) if mmr_raw else MMRConfig()
+    search_config = SearchConfig(
+        weights=weights,
+        temporal_decay=temporal_decay,
+        mmr=mmr,
+        default_max_results=search_raw.get("default_max_results", 10),
+        default_min_score=search_raw.get("default_min_score", 0.3),
+    )
 
     graphiti = _dict_to_dataclass(GraphitiConfig, raw.get("graphiti", {}))
     sync = _dict_to_dataclass(SyncConfig, raw.get("sync", {}))
+    write = _dict_to_dataclass(WriteConfig, raw.get("write", {}))
+
+    logging_raw = raw.get("logging", {})
+    logging_config = LoggingConfig(
+        level=logging_raw.get("level", "INFO"),
+        file=logging_raw.get("file", "~/.memory-service/logs/service.log"),
+    ) if logging_raw else LoggingConfig()
 
     return FullConfig(
         service=service,
@@ -195,9 +258,11 @@ def _parse_raw(raw: dict[str, Any]) -> FullConfig:
         index=index,
         embedding=embedding,
         models=model_config,
-        search_weights=weights,
+        search=search_config,
         graphiti=graphiti,
         sync=sync,
+        write=write,
+        logging=logging_config,
     )
 
 

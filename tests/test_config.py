@@ -13,12 +13,17 @@ from universal_memory.config import (
     FullConfig,
     GraphitiConfig,
     IndexConfig,
+    LoggingConfig,
+    MMRConfig,
     MemoryConfig,
     ModelConfig,
     ModelSpec,
+    SearchConfig,
     SearchWeights,
     ServiceConfig,
     SyncConfig,
+    TemporalDecayConfig,
+    WriteConfig,
     _dict_to_dataclass,
     _expand,
     _parse_raw,
@@ -118,6 +123,41 @@ class TestDataclassDefaults:
         assert cfg.debounce_ms == 500
         assert cfg.targets == []
 
+    def test_temporal_decay_defaults(self):
+        cfg = TemporalDecayConfig()
+        assert cfg.enabled is True
+        assert cfg.half_life_days == 30
+        assert cfg.exempt_files == ["MEMORY.md"]
+
+    def test_mmr_defaults(self):
+        cfg = MMRConfig()
+        assert cfg.enabled is True
+        assert cfg.lambda_ == 0.7
+
+    def test_search_config_defaults(self):
+        cfg = SearchConfig()
+        assert isinstance(cfg.weights, SearchWeights)
+        assert isinstance(cfg.temporal_decay, TemporalDecayConfig)
+        assert isinstance(cfg.mmr, MMRConfig)
+        assert cfg.default_max_results == 10
+        assert cfg.default_min_score == 0.3
+
+    def test_write_defaults(self):
+        cfg = WriteConfig()
+        assert cfg.daily_log_header_format == "## [{time}] {author}"
+        assert cfg.append_newlines == 2
+        assert cfg.file_lock is True
+
+    def test_logging_defaults(self):
+        cfg = LoggingConfig()
+        assert cfg.level == "INFO"
+        assert "~" not in cfg.file
+
+    def test_logging_expands_file_path(self):
+        cfg = LoggingConfig(file="~/logs/test.log")
+        assert "~" not in cfg.file
+        assert cfg.file.endswith("/logs/test.log")
+
     def test_full_config_defaults(self):
         cfg = FullConfig()
         assert isinstance(cfg.service, ServiceConfig)
@@ -125,9 +165,11 @@ class TestDataclassDefaults:
         assert isinstance(cfg.index, IndexConfig)
         assert isinstance(cfg.embedding, EmbeddingConfig)
         assert isinstance(cfg.models, ModelConfig)
-        assert isinstance(cfg.search_weights, SearchWeights)
+        assert isinstance(cfg.search, SearchConfig)
         assert isinstance(cfg.graphiti, GraphitiConfig)
         assert isinstance(cfg.sync, SyncConfig)
+        assert isinstance(cfg.write, WriteConfig)
+        assert isinstance(cfg.logging, LoggingConfig)
         assert cfg.agents == {}
 
 
@@ -190,9 +232,34 @@ class TestParseRaw:
 
     def test_search_weights_nested(self):
         cfg = _parse_raw({"search": {"weights": {"vector": 0.5, "bm25": 0.3}}})
-        assert cfg.search_weights.vector == 0.5
-        assert cfg.search_weights.bm25 == 0.3
-        assert cfg.search_weights.graphiti == 0.25  # default
+        assert cfg.search.weights.vector == 0.5
+        assert cfg.search.weights.bm25 == 0.3
+        assert cfg.search.weights.graphiti == 0.25  # default
+
+    def test_search_temporal_decay_parsed(self):
+        cfg = _parse_raw({"search": {"temporal_decay": {"half_life_days": 60, "enabled": False}}})
+        assert cfg.search.temporal_decay.half_life_days == 60
+        assert cfg.search.temporal_decay.enabled is False
+
+    def test_search_mmr_lambda_parsed(self):
+        cfg = _parse_raw({"search": {"mmr": {"lambda": 0.5, "enabled": False}}})
+        assert cfg.search.mmr.lambda_ == 0.5
+        assert cfg.search.mmr.enabled is False
+
+    def test_search_defaults_parsed(self):
+        cfg = _parse_raw({"search": {"default_max_results": 20, "default_min_score": 0.5}})
+        assert cfg.search.default_max_results == 20
+        assert cfg.search.default_min_score == 0.5
+
+    def test_write_parsed(self):
+        cfg = _parse_raw({"write": {"daily_log_header_format": "# {author}", "append_newlines": 1}})
+        assert cfg.write.daily_log_header_format == "# {author}"
+        assert cfg.write.append_newlines == 1
+
+    def test_logging_parsed(self):
+        cfg = _parse_raw({"logging": {"level": "DEBUG", "file": "/tmp/test.log"}})
+        assert cfg.logging.level == "DEBUG"
+        assert cfg.logging.file.endswith("test.log")
 
     def test_models_nested(self):
         cfg = _parse_raw({
@@ -291,6 +358,6 @@ class TestLoadConfig:
         assert cfg.embedding.provider == "openai"
         assert cfg.models.reranker.enabled is False
         assert cfg.models.query_expander.max_expansions == 3
-        assert cfg.search_weights.vector == 0.5
+        assert cfg.search.weights.vector == 0.5
         assert cfg.graphiti.url == "http://localhost:9001"
         assert cfg.sync.enabled is False

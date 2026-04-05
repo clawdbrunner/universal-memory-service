@@ -251,7 +251,7 @@ async def _handle_write(args: dict) -> list[TextContent]:
     )
     await _file_writer.write_content(
         path=path, content=req.content,
-        header_format="## [{time}] {author}", author=req.author,
+        header_format=_config.write.daily_log_header_format, author=req.author,
     )
     chunks = await _indexer.index_file(str(path))
     await _graphiti_writer.write(content=req.content, author=req.author)

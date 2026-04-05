@@ -19,11 +19,6 @@ from .vector_store import VectorStore
 
 logger = logging.getLogger(__name__)
 
-# Defaults from config.example.yaml (not yet in FullConfig)
-_TEMPORAL_HALF_LIFE_DAYS = 30
-_TEMPORAL_EXEMPT_FILES = ["MEMORY.md"]
-_MMR_LAMBDA = 0.7
-
 
 class RetrievalPipeline:
     """6-stage retrieval pipeline with graceful degradation at every stage.
@@ -166,7 +161,7 @@ class RetrievalPipeline:
         graphiti_results: list[SearchResult],
     ) -> list[SearchResult]:
         """Merge results: normalize scores, weighted combine, temporal decay, MMR dedup."""
-        weights = self._config.search_weights
+        weights = self._config.search.weights
         merged: dict[str, SearchResult] = {}
 
         # Normalize and add vector results
@@ -201,30 +196,33 @@ class RetrievalPipeline:
                 merged[key] = gr
 
         # Temporal decay
-        now = datetime.now(timezone.utc)
-        for sr in merged.values():
-            if sr.file_path and any(
-                sr.file_path.endswith(ex) for ex in _TEMPORAL_EXEMPT_FILES
-            ):
-                continue
-            modified = sr.metadata.get("file_modified_at")
-            if modified:
-                try:
-                    mod_dt = datetime.fromisoformat(modified)
-                    if mod_dt.tzinfo is None:
-                        mod_dt = mod_dt.replace(tzinfo=timezone.utc)
-                    age_days = (now - mod_dt).total_seconds() / 86400
-                    decay = math.pow(0.5, age_days / _TEMPORAL_HALF_LIFE_DAYS)
-                    sr.score *= decay
-                except (ValueError, TypeError):
-                    pass
+        td_cfg = self._config.search.temporal_decay
+        if td_cfg.enabled:
+            now = datetime.now(timezone.utc)
+            for sr in merged.values():
+                if sr.file_path and any(
+                    sr.file_path.endswith(ex) for ex in td_cfg.exempt_files
+                ):
+                    continue
+                modified = sr.metadata.get("file_modified_at")
+                if modified:
+                    try:
+                        mod_dt = datetime.fromisoformat(modified)
+                        if mod_dt.tzinfo is None:
+                            mod_dt = mod_dt.replace(tzinfo=timezone.utc)
+                        age_days = (now - mod_dt).total_seconds() / 86400
+                        decay = math.pow(0.5, age_days / td_cfg.half_life_days)
+                        sr.score *= decay
+                    except (ValueError, TypeError):
+                        pass
 
         # Sort by score descending
         results = sorted(merged.values(), key=lambda r: r.score, reverse=True)
 
         # MMR dedup
-        if results:
-            results = _mmr_dedup(results, _MMR_LAMBDA)
+        mmr_cfg = self._config.search.mmr
+        if mmr_cfg.enabled and results:
+            results = _mmr_dedup(results, mmr_cfg.lambda_)
 
         return results
 
