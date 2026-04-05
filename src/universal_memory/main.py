@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .api.routes import router
 from .config import get_config
 from .db import init_db
-from .indexer import Indexer
+from .indexer import Indexer, _should_ignore
 from .retrieval.embeddings import EmbeddingService
 from .retrieval.pipeline import RetrievalPipeline
 from .retrieval.vector_store import VectorStore
@@ -55,6 +55,8 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
 
     # --- File watcher callback ---
     async def _on_change(file_path: str, change_type: str) -> None:
+        if _should_ignore(file_path, cfg.memory.ignore_patterns):
+            return
         if change_type == "deleted":
             await indexer.remove_file(file_path)
         else:

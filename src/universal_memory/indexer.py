@@ -83,6 +83,9 @@ class Indexer:
 
         Returns an IndexResult with chunks_stored count and embedding status.
         """
+        if _should_ignore(str(file_path), self._config.memory.ignore_patterns):
+            return IndexResult(0, True)
+
         # Debounce: skip if this file was indexed less than 2 seconds ago
         # Exception: daily logs (agents/*/logs/*.md) are always re-indexed
         now = time.time()
