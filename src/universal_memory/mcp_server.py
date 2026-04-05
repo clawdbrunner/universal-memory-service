@@ -83,7 +83,7 @@ TOOLS = [
                 "author": {"type": "string", "description": "Agent name for scoping"},
                 "department": {"type": "string", "description": "Department scope override"},
                 "max_results": {"type": "integer", "description": "Max results (default 10)"},
-                "min_score": {"type": "number", "description": "Minimum score 0-1 (default 0.3)"},
+                "min_score": {"type": "number", "description": "Minimum score 0-1 (default 0.5)"},
             },
             "required": ["query"],
         },
@@ -211,7 +211,7 @@ async def _handle_search(args: dict) -> list[TextContent]:
         author=author or None,
         department=args.get("department"),
         max_results=args.get("max_results", 10),
-        min_score=args.get("min_score", 0.3),
+        min_score=args.get("min_score", 0.5),
     )
     resp = await _pipeline.search(req)
     lines = [f"Found {len(resp.results)} results for: {resp.query}"]

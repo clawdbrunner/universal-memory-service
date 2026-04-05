@@ -107,7 +107,7 @@ class SearchConfig:
     temporal_decay: TemporalDecayConfig = field(default_factory=TemporalDecayConfig)
     mmr: MMRConfig = field(default_factory=MMRConfig)
     default_max_results: int = 10
-    default_min_score: float = 0.3
+    default_min_score: float = 0.5
 
 
 @dataclass
@@ -238,7 +238,7 @@ def _parse_raw(raw: dict[str, Any]) -> FullConfig:
         temporal_decay=temporal_decay,
         mmr=mmr,
         default_max_results=search_raw.get("default_max_results", 10),
-        default_min_score=search_raw.get("default_min_score", 0.3),
+        default_min_score=search_raw.get("default_min_score", 0.5),
     )
 
     graphiti = _dict_to_dataclass(GraphitiConfig, raw.get("graphiti", {}))

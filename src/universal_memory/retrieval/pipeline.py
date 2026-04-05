@@ -130,6 +130,16 @@ class RetrievalPipeline:
             merged = []
         timing_ms["merge"] = (time.perf_counter() - t0) * 1000
 
+        # Relevance gap detection: truncate if scores drop sharply
+        if len(merged) > 1:
+            sorted_results = sorted(merged, key=lambda x: x.score, reverse=True)
+            truncated = [sorted_results[0]]
+            for i in range(1, len(sorted_results)):
+                if sorted_results[i].score < sorted_results[0].score * 0.3:
+                    break
+                truncated.append(sorted_results[i])
+            merged = truncated
+
         total_candidates = len(merged)
 
         # Stage 6: Rerank

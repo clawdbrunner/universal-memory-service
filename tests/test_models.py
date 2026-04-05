@@ -166,7 +166,7 @@ class TestSearchRequest:
         assert req.department is None
         assert req.sources == ["files", "graphiti"]
         assert req.max_results == 10
-        assert req.min_score == 0.3
+        assert req.min_score == 0.5
         assert req.temporal_filter is None
         assert req.expand is True
         assert req.rerank is True

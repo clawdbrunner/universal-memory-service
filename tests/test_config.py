@@ -140,7 +140,7 @@ class TestDataclassDefaults:
         assert isinstance(cfg.temporal_decay, TemporalDecayConfig)
         assert isinstance(cfg.mmr, MMRConfig)
         assert cfg.default_max_results == 10
-        assert cfg.default_min_score == 0.3
+        assert cfg.default_min_score == 0.5
 
     def test_write_defaults(self):
         cfg = WriteConfig()

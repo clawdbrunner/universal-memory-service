@@ -38,9 +38,33 @@ def chunk_markdown(
     lines = text.split("\n")
     sections = _split_by_headers(lines, level=2)
 
+    # Detect daily log files: all ## headers match [HH:MM:SS] pattern
+    daily_log_pattern = re.compile(r"^\[\d{1,2}:\d{2}:\d{2}\]")
+    headers_with_text = [h for h, _, _ in sections if h]
+    is_daily_log = bool(headers_with_text) and all(
+        daily_log_pattern.match(h) for h in headers_with_text
+    )
+
     chunks: list[Chunk] = []
     char_budget = chunk_size * 4  # convert token budget to char budget
     overlap_chars = overlap * 4
+
+    if is_daily_log:
+        # Daily log: one chunk per ## section, no merging
+        for header_path, section_lines, section_start in sections:
+            section_text = "\n".join(section_lines)
+            if section_text.strip():
+                chunks.append(
+                    _make_chunk(
+                        doc_id,
+                        file_path,
+                        section_text,
+                        section_start,
+                        section_start + len(section_lines) - 1,
+                        header_path,
+                    )
+                )
+        return chunks
 
     for header_path, section_lines, section_start in sections:
         section_text = "\n".join(section_lines)
