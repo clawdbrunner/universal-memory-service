@@ -24,6 +24,12 @@ class VectorStore:
         self._file_index: dict[str, set[str]] = {}  # file_path -> chunk_ids
         self._loaded = False
 
+    def invalidate(self) -> None:
+        """Clear cached state so next search reloads fresh from DB."""
+        self._loaded = False
+        self._cache.clear()
+        self._file_index.clear()
+
     async def _ensure_loaded(self) -> None:
         """Load all embeddings from SQLite into memory on first access."""
         if self._loaded:

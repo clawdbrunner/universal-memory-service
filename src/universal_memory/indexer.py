@@ -106,6 +106,7 @@ class Indexer:
             self._last_embedding_failure = _now()
             logger.warning("Embeddings failed for %s; chunks stored for BM25 only", file_path)
 
+        self._vectors.invalidate()
         await update_file_state(file_path, content_hash, len(chunks))
         logger.info("Indexed %s → %d chunks (embeddings=%s)", file_path, len(chunks), embeddings_ok)
         return IndexResult(len(chunks), embeddings_ok)
@@ -136,6 +137,7 @@ class Indexer:
         """Remove all indexed data for a file."""
         await delete_chunks_for_file(file_path)
         await self._vectors.delete_for_file(file_path)
+        self._vectors.invalidate()
         # Remove file_state row
         from .db import get_connection
 
