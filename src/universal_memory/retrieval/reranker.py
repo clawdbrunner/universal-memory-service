@@ -68,14 +68,17 @@ class RerankerService:
         scored: list[tuple[SearchResult, float]] = []
         for candidate in candidates:
             try:
-                pair_text = f"query: {query} document: {candidate.content}"
+                # bge-reranker-v2-m3 is a cross-encoder; in GGUF embedding
+                # mode the first dimension of the output IS the relevance
+                # logit.  The model expects a query-document pair separated
+                # by </s></s> (BOS is added automatically by the tokenizer).
+                pair_text = f"{query}</s></s>{candidate.content[:300]}</s>"
                 output = self._model.embed(pair_text)
-                # Use first value of embedding as relevance score
                 if isinstance(output[0], list):
                     raw_score = float(output[0][0])
                 else:
                     raw_score = float(output[0])
-                # Sigmoid to normalize to 0-1
+                # Sigmoid to convert logit to 0-1 relevance probability
                 rerank_score = 1.0 / (1.0 + math.exp(-raw_score))
             except Exception:
                 rerank_score = 0.5
