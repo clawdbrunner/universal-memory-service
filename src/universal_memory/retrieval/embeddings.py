@@ -38,6 +38,11 @@ class EmbeddingService:
 
         Returns empty list if both providers fail (graceful degradation).
         """
+        logger.debug(
+            "generate: texts=%d provider_used=%s cache_size=%d",
+            len(texts), self._provider_used, len(self._cache),
+        )
+
         if not texts:
             return []
 
@@ -60,25 +65,44 @@ class EmbeddingService:
         # Stick with the provider that was used previously to avoid dimension mismatch
         if self._provider_used == "gemini":
             embeddings = await self._generate_gemini(uncached_texts)
-            if not embeddings:
+            if embeddings:
+                logger.debug("generate: gemini succeeded, count=%d", len(embeddings))
+            else:
+                logger.debug("generate: gemini failed, falling back to openai")
                 logger.warning("Gemini failed with provider lock, falling back to OpenAI")
                 embeddings = await self._generate_openai(uncached_texts)
+                if embeddings:
+                    logger.debug("generate: openai fallback succeeded, count=%d", len(embeddings))
+                else:
+                    logger.debug("generate: openai fallback also failed")
         elif self._provider_used == "openai":
             embeddings = await self._generate_openai(uncached_texts)
-            if not embeddings:
+            if embeddings:
+                logger.debug("generate: openai succeeded, count=%d", len(embeddings))
+            else:
+                logger.debug("generate: openai failed, falling back to gemini")
                 logger.warning("OpenAI failed with provider lock, falling back to Gemini")
                 embeddings = await self._generate_gemini(uncached_texts)
+                if embeddings:
+                    logger.debug("generate: gemini fallback succeeded, count=%d", len(embeddings))
+                else:
+                    logger.debug("generate: gemini fallback also failed")
         else:
             # First call: try Gemini first, fallback to OpenAI
             embeddings = await self._generate_gemini(uncached_texts)
             if embeddings:
+                logger.debug("generate: gemini (first call) succeeded, count=%d", len(embeddings))
                 self._provider_used = "gemini"
                 self._dimensions = self.GEMINI_DIMS
             else:
+                logger.debug("generate: gemini (first call) failed, trying openai")
                 embeddings = await self._generate_openai(uncached_texts)
                 if embeddings:
+                    logger.debug("generate: openai (first call) succeeded, count=%d", len(embeddings))
                     self._provider_used = "openai"
                     self._dimensions = self.OPENAI_DIMS
+                else:
+                    logger.debug("generate: openai (first call) also failed")
 
         if not embeddings:
             logger.warning("All embedding providers failed, returning empty list")
@@ -90,7 +114,9 @@ class EmbeddingService:
             self._cache[h] = emb
             results[idx] = emb
 
-        return [r for r in results if r is not None]
+        final = [r for r in results if r is not None]
+        logger.debug("generate: returning %d embeddings", len(final))
+        return final
 
     async def _generate_gemini(self, texts: list[str]) -> list[list[float]] | None:
         """Generate embeddings via Google Gemini gemini-embedding-001.

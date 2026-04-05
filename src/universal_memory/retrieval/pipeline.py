@@ -37,6 +37,10 @@ class RetrievalPipeline:
 
     async def search(self, request: SearchRequest) -> SearchResponse:
         """Execute the full 6-stage retrieval pipeline."""
+        logger.debug(
+            "search: query=%r author=%r sources=%s expand=%s",
+            request.query, request.author, request.sources, request.expand,
+        )
         timing_ms: dict[str, float] = {}
         sources_queried: list[str] = []
 
@@ -51,6 +55,7 @@ class RetrievalPipeline:
             logger.warning("Expand stage failed", exc_info=True)
             queries = [request.query]
         timing_ms["expand"] = (time.perf_counter() - t0) * 1000
+        logger.debug("search: expanded queries=%s", queries)
 
         # Derive filter_paths and group_ids from request scope
         filter_paths: list[str] | None = None
@@ -67,6 +72,8 @@ class RetrievalPipeline:
             filter_paths = [f"departments/{request.department}/", "shared/"]
             group_ids = [f"memory-{request.department}", "memory-shared"]
 
+        logger.debug("search: filter_paths=%s group_ids=%s", filter_paths, group_ids)
+
         # Stage 2: Vector search
         t0 = time.perf_counter()
         vector_results: list[tuple[str, float]] = []
@@ -80,6 +87,9 @@ class RetrievalPipeline:
                             embs[0], top_k=20, filter_paths=filter_paths
                         )
                         vector_results.extend(hits)
+                    else:
+                        logger.warning("pipeline: empty embedding for query=%r provider_used=%s", q, self.embeddings.provider_used)
+                logger.debug("pipeline: vector search returned %d results", len(vector_results))
                 sources_queried.append("vector")
             except Exception:
                 logger.warning("Vector search stage failed", exc_info=True)
