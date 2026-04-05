@@ -73,6 +73,11 @@ class VectorStore:
         """
         await self._ensure_loaded()
 
+        logger.debug("VectorStore.search: cache=%d items, filter_paths=%s", len(self._cache), filter_paths)
+
+        qnorm = math.sqrt(sum(x * x for x in query_embedding))
+        logger.debug("VectorStore.search: query embedding norm=%.4f, dims=%d", qnorm, len(query_embedding))
+
         if not self._cache:
             return []
 
@@ -90,6 +95,13 @@ class VectorStore:
         for chunk_id, stored_emb in candidates.items():
             score = _cosine_similarity(query_embedding, stored_emb)
             scores.append((chunk_id, score))
+
+        score_vals = [s for _, s in scores]
+        logger.debug(
+            "VectorStore.search: after filter %d candidates, top scores: %s",
+            len(candidates),
+            [f"{s:.3f}" for s in sorted(score_vals, reverse=True)[:3]] if score_vals else "none",
+        )
 
         scores.sort(key=lambda x: x[1], reverse=True)
         return scores[:top_k]

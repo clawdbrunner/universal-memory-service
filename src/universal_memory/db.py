@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import hashlib
 from pathlib import Path
 from typing import Any, AsyncIterator
 
@@ -37,6 +38,7 @@ CREATE TABLE IF NOT EXISTS chunks (
     indexed_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
     token_count INTEGER DEFAULT 0,
     embedding_hash TEXT DEFAULT '',
+    _fts_id INTEGER UNIQUE,
     FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE
 );
 
@@ -48,25 +50,25 @@ CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
     file_path,
     header_path,
     content='chunks',
-    content_rowid='rowid'
+    content_rowid='_fts_id'
 );
 
 -- Triggers to keep FTS in sync with chunks table
 CREATE TRIGGER IF NOT EXISTS chunks_ai AFTER INSERT ON chunks BEGIN
     INSERT INTO chunks_fts(rowid, content, file_path, header_path)
-    VALUES (new.rowid, new.content, new.file_path, new.header_path);
+    VALUES (new._fts_id, new.content, new.file_path, new.header_path);
 END;
 
 CREATE TRIGGER IF NOT EXISTS chunks_ad AFTER DELETE ON chunks BEGIN
     INSERT INTO chunks_fts(chunks_fts, rowid, content, file_path, header_path)
-    VALUES ('delete', old.rowid, old.content, old.file_path, old.header_path);
+    VALUES ('delete', old._fts_id, old.content, old.file_path, old.header_path);
 END;
 
 CREATE TRIGGER IF NOT EXISTS chunks_au AFTER UPDATE ON chunks BEGIN
     INSERT INTO chunks_fts(chunks_fts, rowid, content, file_path, header_path)
-    VALUES ('delete', old.rowid, old.content, old.file_path, old.header_path);
+    VALUES ('delete', old._fts_id, old.content, old.file_path, old.header_path);
     INSERT INTO chunks_fts(rowid, content, file_path, header_path)
-    VALUES (new.rowid, new.content, new.file_path, new.header_path);
+    VALUES (new._fts_id, new.content, new.file_path, new.header_path);
 END;
 
 CREATE TABLE IF NOT EXISTS embeddings (
@@ -117,6 +119,11 @@ async def get_connection(db_path: str | None = None) -> AsyncIterator[aiosqlite.
         await db.close()
 
 
+def _chunk_fts_id(chunk_id: str) -> int:
+    """Derive a stable integer FTS rowid from a chunk's text id."""
+    return int(hashlib.md5(chunk_id.encode()).hexdigest(), 16) % (2**63)
+
+
 # ---------------------------------------------------------------------------
 # CRUD operations
 # ---------------------------------------------------------------------------
@@ -130,8 +137,8 @@ async def insert_chunks(chunks: list[Chunk], db_path: str | None = None) -> int:
         await db.executemany(
             """INSERT OR REPLACE INTO chunks
                (id, document_id, file_path, line_start, line_end,
-                content, header_path, token_count, embedding_hash)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                content, header_path, token_count, embedding_hash, _fts_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             [
                 (
                     c.id,
@@ -143,6 +150,7 @@ async def insert_chunks(chunks: list[Chunk], db_path: str | None = None) -> int:
                     c.header_path,
                     c.token_count,
                     c.embedding_hash,
+                    _chunk_fts_id(c.id),
                 )
                 for c in chunks
             ],
@@ -187,7 +195,7 @@ async def search_bm25(
             sql = f"""
                 SELECT c.*, bm25(chunks_fts) AS score
                 FROM chunks_fts f
-                JOIN chunks c ON c.rowid = f.rowid
+                JOIN chunks c ON c._fts_id = f.rowid
                 WHERE chunks_fts MATCH ?
                   AND ({like_clauses})
                 ORDER BY score
@@ -199,7 +207,7 @@ async def search_bm25(
             sql = """
                 SELECT c.*, bm25(chunks_fts) AS score
                 FROM chunks_fts f
-                JOIN chunks c ON c.rowid = f.rowid
+                JOIN chunks c ON c._fts_id = f.rowid
                 WHERE chunks_fts MATCH ?
                 ORDER BY score
                 LIMIT ?
