@@ -69,6 +69,12 @@ CREATE TRIGGER IF NOT EXISTS chunks_au AFTER UPDATE ON chunks BEGIN
     VALUES (new.rowid, new.content, new.file_path, new.header_path);
 END;
 
+CREATE TABLE IF NOT EXISTS embeddings (
+    chunk_id TEXT PRIMARY KEY,
+    embedding BLOB NOT NULL,
+    FOREIGN KEY (chunk_id) REFERENCES chunks(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS file_state (
     file_path TEXT PRIMARY KEY,
     content_hash TEXT NOT NULL,
@@ -234,6 +240,14 @@ async def update_file_state(
             (file_path, content_hash, chunk_count),
         )
         await db.commit()
+
+
+async def get_chunk(chunk_id: str, db_path: str | None = None) -> dict[str, Any] | None:
+    """Fetch a single chunk by ID."""
+    async with get_connection(db_path) as db:
+        cursor = await db.execute("SELECT * FROM chunks WHERE id = ?", (chunk_id,))
+        row = await cursor.fetchone()
+        return dict(row) if row else None
 
 
 async def get_stats(db_path: str | None = None) -> dict[str, Any]:
