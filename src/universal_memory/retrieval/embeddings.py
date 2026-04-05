@@ -27,6 +27,7 @@ class EmbeddingService:
         self._config = get_config()
         self._cache: dict[str, list[float]] = {}
         self._dimensions = self.GEMINI_DIMS
+        self._provider_used: str | None = None
 
     @staticmethod
     def _content_hash(text: str) -> str:
@@ -56,15 +57,22 @@ class EmbeddingService:
 
         uncached_texts = [texts[i] for i in uncached_indices]
 
-        # Try Gemini first
-        embeddings = await self._generate_gemini(uncached_texts)
-        if embeddings:
-            self._dimensions = self.GEMINI_DIMS
-        else:
-            # Fallback to OpenAI
+        # Stick with the provider that was used previously to avoid dimension mismatch
+        if self._provider_used == "gemini":
+            embeddings = await self._generate_gemini(uncached_texts)
+        elif self._provider_used == "openai":
             embeddings = await self._generate_openai(uncached_texts)
+        else:
+            # First call: try Gemini first, fallback to OpenAI
+            embeddings = await self._generate_gemini(uncached_texts)
             if embeddings:
-                self._dimensions = self.OPENAI_DIMS
+                self._provider_used = "gemini"
+                self._dimensions = self.GEMINI_DIMS
+            else:
+                embeddings = await self._generate_openai(uncached_texts)
+                if embeddings:
+                    self._provider_used = "openai"
+                    self._dimensions = self.OPENAI_DIMS
 
         if not embeddings:
             logger.warning("All embedding providers failed, returning empty list")
@@ -147,5 +155,11 @@ class EmbeddingService:
             return None
 
     @property
+    def provider_used(self) -> str | None:
+        """Return the name of the last successful provider ('gemini' or 'openai'), or None."""
+        return self._provider_used
+
+    @property
     def dimensions(self) -> int:
+        """Return the actual dimension count used by the current provider."""
         return self._dimensions

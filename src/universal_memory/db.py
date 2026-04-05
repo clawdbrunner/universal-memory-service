@@ -257,9 +257,7 @@ async def get_stats(db_path: str | None = None) -> dict[str, Any]:
         files = await (await db.execute("SELECT COUNT(*) FROM file_state")).fetchone()
         chunks = await (await db.execute("SELECT COUNT(*) FROM chunks")).fetchone()
         embeddings = await (
-            await db.execute(
-                "SELECT COUNT(*) FROM chunks WHERE embedding_hash != ''"
-            )
+            await db.execute("SELECT COUNT(*) FROM embeddings")
         ).fetchone()
         last = await (
             await db.execute(
