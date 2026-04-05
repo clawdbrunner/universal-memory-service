@@ -75,17 +75,27 @@ class QueryExpanderService:
             max_expansions = self._config.models.query_expander.max_expansions
             output = self._model.create_chat_completion(
                 messages=[
-                    {"role": "system", "content": "You generate alternative search queries. Return only the queries, one per line."},
-                    {"role": "user", "content": f'Generate {max_expansions} alternative phrasings for: "{query}"'},
+                    {"role": "system", "content": "You generate alternative search queries. Return only the queries, one per line. /no_think"},
+                    {"role": "user", "content": f'Generate {max_expansions} alternative phrasings for: "{query}" /no_think'},
                 ],
                 max_tokens=128,
                 temperature=0.7,
             )
             text = output["choices"][0]["message"]["content"].strip()
+            # Strip Qwen3 thinking tags if present
+            import re as _re
+            text = _re.sub(r'<think\b[^>]*>.*?</think\s*>', '', text, flags=_re.DOTALL).strip()
             for line in text.split("\n"):
                 line = line.strip().strip("0123456789.-) ")
-                if line and line != query and len(line) > 3:
-                    queries.append(line)
+                # Skip preambles (lines ending with :), too short, or echoing original
+                if not line or line == query or len(line) <= 3 or line.endswith(":"):
+                    continue
+                # Skip lines that are mostly the original query with noise appended
+                if query.lower() in line.lower() and len(line) < len(query) + 20:
+                    # Allow minor variations like "utility payment plans"
+                    if line.lower().strip() == query.lower():
+                        continue
+                queries.append(line)
                 if len(queries) >= max_expansions + 1:
                     break
         except Exception:

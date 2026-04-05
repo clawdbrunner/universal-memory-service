@@ -107,7 +107,7 @@ class SearchConfig:
     temporal_decay: TemporalDecayConfig = field(default_factory=TemporalDecayConfig)
     mmr: MMRConfig = field(default_factory=MMRConfig)
     default_max_results: int = 10
-    default_min_score: float = 0.5
+    default_min_score: float = 0.3
 
 
 @dataclass

@@ -66,9 +66,11 @@ class Indexer:
         Returns an IndexResult with chunks_stored count and embedding status.
         """
         # Debounce: skip if this file was indexed less than 2 seconds ago
+        # Exception: daily logs (agents/*/logs/*.md) are always re-indexed
         now = time.time()
+        is_daily_log = "/logs/" in file_path and file_path.endswith(".md")
         last = self._recently_indexed.get(file_path, 0)
-        if now - last < 2.0:
+        if not is_daily_log and now - last < 2.0:
             logger.debug("Skipping recently indexed file: %s", file_path)
             return IndexResult(0, True)
         self._recently_indexed[file_path] = now

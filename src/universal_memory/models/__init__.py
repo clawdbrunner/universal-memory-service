@@ -132,7 +132,7 @@ class SearchRequest:
     department: str | None = None
     sources: list[str] = field(default_factory=lambda: ["files", "graphiti"])
     max_results: int = 10
-    min_score: float = 0.5
+    min_score: float = 0.3
     temporal_filter: dict[str, str] | None = None
     expand: bool = True
     rerank: bool = True
