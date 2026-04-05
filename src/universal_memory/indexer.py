@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -53,6 +54,7 @@ class Indexer:
         self._config = get_config()
         self._last_embedding_success: str | None = None
         self._last_embedding_failure: str | None = None
+        self._recently_indexed: dict[str, float] = {}
 
     # ------------------------------------------------------------------
     # Public API
@@ -63,6 +65,19 @@ class Indexer:
 
         Returns an IndexResult with chunks_stored count and embedding status.
         """
+        # Debounce: skip if this file was indexed less than 2 seconds ago
+        now = time.time()
+        last = self._recently_indexed.get(file_path, 0)
+        if now - last < 2.0:
+            logger.debug("Skipping recently indexed file: %s", file_path)
+            return IndexResult(0, True)
+        self._recently_indexed[file_path] = now
+
+        # Periodically clean up old entries
+        if len(self._recently_indexed) > 100:
+            cutoff = now - 60
+            self._recently_indexed = {k: v for k, v in self._recently_indexed.items() if v > cutoff}
+
         path = Path(file_path)
         if not path.is_file():
             logger.warning("index_file: not a file: %s", file_path)
@@ -106,7 +121,6 @@ class Indexer:
             self._last_embedding_failure = _now()
             logger.warning("Embeddings failed for %s; chunks stored for BM25 only", file_path)
 
-        self._vectors.invalidate()
         await update_file_state(file_path, content_hash, len(chunks))
         logger.info("Indexed %s → %d chunks (embeddings=%s)", file_path, len(chunks), embeddings_ok)
         return IndexResult(len(chunks), embeddings_ok)
@@ -137,7 +151,6 @@ class Indexer:
         """Remove all indexed data for a file."""
         await delete_chunks_for_file(file_path)
         await self._vectors.delete_for_file(file_path)
-        self._vectors.invalidate()
         # Remove file_state row
         from .db import get_connection
 
