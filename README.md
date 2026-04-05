@@ -1,137 +1,120 @@
 # Universal Memory Service
 
-A self-hosted memory service for AI agents. One API for semantic search, keyword search, and temporal knowledge graphs — with built-in reranking and query expansion.
-
-**Status:** 🚧 Under Development
-
-## Why?
-
-AI agents need memory, but the current state is fragmented:
-
-- **Vector search** lives in one system (QMD)
-- **Keyword search** lives in another (SQLite FTS)
-- **Temporal knowledge** lives in Graphiti (Neo4j)
-- **File management** is scattered across shell scripts and launchd daemons
-
-This service unifies all of that behind a single HTTP API (or MCP server). One call to search, one call to write, and everything stays in sync.
+Self-hosted service providing unified memory search and write operations across file-based memory, vector embeddings, and the [Graphiti](https://github.com/getzep/graphiti) temporal knowledge graph. Platform-agnostic — works with any client via HTTP API or MCP stdio transport.
 
 ## Features
 
-- **Hybrid retrieval** — Vector (semantic) + BM25 (keyword) + Graphiti (temporal) search with score fusion
-- **Local reranking** — Cross-encoder model re-scores results for better precision
-- **Query expansion** — Small local LLM rewrites queries for better recall
-- **Multi-platform** — Works with OpenClaw, Hermes, Claude Desktop, or any MCP client
-- **Namespace isolation** — Per-agent private memory, department-level sharing, global shared knowledge
-- **Platform sync** — Auto-syncs in-context files (MEMORY.md, daily logs) to each platform
-- **Single write path** — One API call persists to both files and Graphiti
-- **Graceful degradation** — Each component fails independently; the service stays up
+- **Unified search** — One query searches vector embeddings (Gemini), BM25 full-text, and Graphiti temporal facts, merged and reranked
+- **Unified write** — One call persists to markdown files and Graphiti simultaneously
+- **6-stage retrieval pipeline** — Query expansion → vector → BM25 → Graphiti → merge & rank → cross-encoder rerank
+- **Local models** — Reranker and query expander run locally via GGUF (no API dependency for search)
+- **Platform sync** — Canonical files auto-sync to OpenClaw, Hermes, and other platforms
+- **MCP server** — Stdio transport for Claude Desktop, Cursor, and any MCP client
+- **Graceful degradation** — Every component fails independently; the service never fully breaks
 
 ## Architecture
 
 ```
-┌──────────┐  ┌──────────┐  ┌──────────────┐  ┌──────────┐
-│ OpenClaw │  │  Hermes  │  │ Claude Desktop│  │ Any MCP  │
-│ (HTTP)   │  │  (HTTP)  │  │  (MCP stdio)  │  │  Client  │
-└────┬─────┘  └────┬─────┘  └──────┬────────┘  └────┬─────┘
-     └──────────────┴──────────────┴────────────────┘
-                           │
-              ┌────────────▼────────────┐
-              │  Universal Memory Svc   │
-              │  FastAPI :8002 + MCP    │
-              ├─────────────────────────┤
-              │  Retrieval Pipeline     │
-              │  1. Query Expansion     │
-              │  2. Vector Search       │
-              │  3. BM25 Search         │
-              │  4. Graphiti Search     │
-              │  5. Merge & Rank        │
-              │  6. Rerank              │
-              ├─────────────────────────┤
-              │  Write Engine           │
-              │  File Writer + Graphiti │
-              ├─────────────────────────┤
-              │  Platform Sync          │
-              │  OpenClaw ↔ Hermes ↔ …  │
-              └────────┬────────────────┘
-                       │
-            ┌──────────┴──────────┐
-            │                     │
-      ┌─────▼─────┐        ┌─────▼──────┐
-      │  SQLite   │        │  Graphiti  │
-      │ vec + FTS5│        │  API:8001  │
-      └───────────┘        └────────────┘
+┌───────────┐  ┌───────────┐  ┌───────────────┐  ┌───────────┐
+│  OpenClaw │  │  Hermes   │  │Claude Desktop │  │  Any MCP  │
+│  (skill)  │  │  (skill)  │  │  (MCP client) │  │  Client   │
+└─────┬─────┘  └─────┬─────┘  └──────┬────────┘  └─────┬─────┘
+      │              │               │                  │
+      └──────────────┴───── HTTP ────┴──── MCP stdio ───┘
+                             │
+                ┌────────────▼────────────┐
+                │  Universal Memory Svc   │
+                │  FastAPI :8002 + MCP    │
+                ├─────────────────────────┤
+                │  Retrieval Pipeline     │
+                │  File Writer + Sync     │
+                │  Indexer + Watcher      │
+                │  Local GGUF Models      │
+                └──────┬──────────┬───────┘
+                       │          │
+                ┌──────▼──┐  ┌───▼────────┐
+                │ SQLite  │  │ Graphiti   │
+                │ vec+FTS │  │ API :8001  │
+                └─────────┘  └────────────┘
 ```
 
 ## Quick Start
 
+### Prerequisites
+
+- Python 3.11+
+- [Graphiti API](https://github.com/getzep/graphiti) running on port 8001 (optional)
+- Gemini API key for embeddings (optional — falls back to OpenAI, then BM25-only)
+
+### Install
+
 ```bash
-# Clone
-git clone https://github.com/clawdbrunner/universal-memory-service.git
-cd universal-memory-service
-
-# Configure
-cp config/config.example.yaml config.yaml
-# Edit config.yaml with your settings
-
-# Run
-uv run python -m uvicorn universal_memory.main:app --port 8002
+git clone <repo-url> && cd universal-memory-service
+pip install -e ".[dev]"
 ```
 
-### Docker
+### Configure
 
 ```bash
-docker compose up -d
+cp config/config.example.yaml ~/.memory-service/config.yaml
+# Edit to set your data_dir, API keys, agent mappings
+```
+
+### Run
+
+```bash
+# HTTP server
+python -m universal_memory.main
+
+# MCP server (for Claude Desktop / Cursor)
+python -m universal_memory.mcp_server
 ```
 
 ## API
+
+Base URL: `http://localhost:8002/api/v1`
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/search` | POST | Hybrid search across files + Graphiti |
+| `/write` | POST | Write to files and/or Graphiti |
+| `/read/{path}` | GET | Read a file from the memory store |
+| `/list/{namespace}` | GET | List files under a namespace |
+| `/edit` | POST | Surgical find-and-replace in a file |
+| `/ingest` | POST | Batch ingest messages into Graphiti |
+| `/status` | GET | Health check and index stats |
+| `/reindex` | POST | Trigger full re-index |
 
 ### Search
 
 ```bash
 curl -s localhost:8002/api/v1/search \
   -H "Content-Type: application/json" \
-  -d '{"query": "electric bill due date", "author": "alice"}'
+  -d '{"query": "deployment process", "author": "alice"}' | jq
 ```
-
-The retrieval pipeline runs all enabled stages and returns merged, reranked results:
-
-1. **Query expansion** — Rewrites query into 2–3 semantic variants
-2. **Vector search** — Embeds variants with Gemini, searches sqlite-vec
-3. **BM25 search** — Keyword matching via SQLite FTS5
-4. **Graphiti search** — Temporal/relational facts from Neo4j
-5. **Merge & rank** — Score normalization, weighted fusion, temporal decay, MMR dedup
-6. **Rerank** — Local cross-encoder re-scores top candidates
 
 ### Write
 
 ```bash
 curl -s localhost:8002/api/v1/write \
   -H "Content-Type: application/json" \
-  -d '{"content": "Electric bill due on the 5th", "author": "alice"}'
+  -d '{"content": "Deployed v2.3 to staging", "author": "bob"}'
 ```
 
-A single write call:
-- Appends to the agent's daily log file
-- Logs to Graphiti with proper group scoping
-- Triggers platform sync
-- Updates the search index
+## MCP Server
 
-### Other Endpoints
+The MCP server exposes 6 tools over stdio transport:
 
-| Endpoint | Description |
-|----------|-------------|
-| `POST /search` | Hybrid search across all memory sources |
-| `POST /write` | Write to files and Graphiti |
-| `GET /read/{path}` | Read a file from the canonical store |
-| `GET /list/{namespace}` | List files in a namespace |
-| `POST /edit` | Surgical find-and-replace in a file |
-| `POST /ingest` | Bulk ingest (session transcripts, batch imports) |
-| `POST /reindex` | Force full re-index |
-| `GET /status` | Health check and index stats |
+| Tool | Maps to | Description |
+|------|---------|-------------|
+| `memory_search` | POST /search | Search files + Graphiti |
+| `memory_write` | POST /write | Write to files + Graphiti |
+| `memory_read` | GET /read | Read a specific file |
+| `memory_list` | GET /list | List files in a namespace |
+| `memory_edit` | POST /edit | Find-and-replace in a file |
+| `memory_status` | GET /status | Service health and stats |
 
-### MCP (Claude Desktop)
-
-Add to your `claude_desktop_config.json`:
+### Claude Desktop config
 
 ```json
 {
@@ -145,68 +128,66 @@ Add to your `claude_desktop_config.json`:
 }
 ```
 
-## Namespaces
+## Retrieval Pipeline
 
-Agents don't think in directory paths — they think in terms of who they are. The API uses `author` and `department` fields, and the service resolves file locations and Graphiti group IDs automatically.
+Every search runs through a 6-stage pipeline:
 
-| Target | File Location | Graphiti Groups |
-|--------|--------------|-----------------|
-| `daily` (default) | `agents/{author}/logs/YYYY-MM-DD.md` | `memory-{author}` + `memory-{dept}` |
-| `long-term` | `agents/{author}/MEMORY.md` | `memory-{author}` |
-| `department` | `departments/{dept}/YYYY-MM-DD.md` | `memory-{dept}` |
-| `shared` | `shared/YYYY-MM-DD.md` | `memory-shared` |
+1. **Query Expansion** — Local LLM rewrites the query into 2-3 semantic variants
+2. **Vector Search** — Embed all variants via Gemini, cosine similarity against SQLite-vec
+3. **BM25 Search** — Full-text search via SQLite FTS5
+4. **Graphiti Search** — Temporal fact retrieval from the knowledge graph
+5. **Merge & Rank** — Normalize scores, weighted merge (vector 0.40, BM25 0.20, Graphiti 0.25), temporal decay, MMR dedup
+6. **Rerank** — Local cross-encoder re-scores top-N candidates for precision
 
-Search is scoped automatically: an agent sees their own files, their department's files, and shared files — never another agent's private memory.
+## File Namespaces
 
-## Tech Stack
+```
+~/.memory-service/data/
+├── shared/              # Cross-agent knowledge (MEMORY.md, USER.md)
+├── agents/{name}/logs/  # Per-agent daily logs
+├── departments/{dept}/  # Department-level knowledge
+├── projects/            # Cross-cutting project docs
+├── guides/              # How-to docs
+└── system/              # Internal state
+```
 
-| Component | Technology |
-|-----------|-----------|
-| HTTP API | FastAPI (Python 3.11+) |
-| MCP Server | Python `mcp` SDK (stdio transport) |
-| Vector Search | SQLite + sqlite-vec (fallback: FAISS) |
-| Keyword Search | SQLite FTS5 (BM25) |
-| Embeddings | Gemini `gemini-embedding-001` (free tier) |
-| Reranker | Local GGUF cross-encoder (~400 MB) |
-| Query Expander | Local GGUF LLM (~1 GB) |
-| Knowledge Graph | Graphiti API → Neo4j |
-| File Watching | `watchfiles` with polling fallback |
-
-## Resource Usage
-
-| Component | Memory | Disk |
-|-----------|--------|------|
-| FastAPI service | ~50 MB | — |
-| Reranker model | ~400 MB | 312 MB |
-| Query expander model | ~1.1 GB | 980 MB |
-| SQLite index | ~10 MB | ~5 MB |
-| **Total** | **~1.6 GB** | **~1.3 GB** |
+Agents write using `author` and `target` fields — the service resolves file paths automatically.
 
 ## Configuration
 
-Copy `config/config.example.yaml` and customize. Key sections:
+See [`config/config.example.yaml`](config/config.example.yaml) for all options:
 
-- **agents** — Agent names, departments, Graphiti group mappings
-- **sync** — Platform sync targets (OpenClaw, Hermes, etc.)
-- **index** — Chunk size, overlap, DB path
-- **embedding** — Provider, model, fallback chain
-- **models** — Reranker and query expander paths and settings
-- **search** — Source weights, temporal decay, MMR params
-- **graphiti** — Graphiti API URL and timeout
+- **Service** — Host, port, auth token
+- **Memory** — Data directory, file extensions
+- **Agents** — Name-to-department mapping
+- **Index** — Chunk size (400 tokens), overlap (80 tokens), DB path
+- **Embedding** — Provider (Gemini/OpenAI), model, batch size
+- **Models** — Reranker and query expander GGUF paths
+- **Search** — Weights, temporal decay, MMR lambda
+- **Graphiti** — URL, timeout
+- **Sync** — Platform sync targets
 
-See [`config/config.example.yaml`](config/config.example.yaml) for the full reference.
+## Local Models
 
-## Graceful Degradation
+| Model | Purpose | Size | Latency |
+|-------|---------|------|---------|
+| bge-reranker-v2-m3 (GGUF Q4) | Cross-encoder reranking | ~312 MB | ~165ms for 30 candidates |
+| Qwen3-1.7B (GGUF Q4) | Query expansion | ~980 MB | ~80-100ms per query |
 
-The service never becomes a single point of failure:
+Both are optional — the service degrades gracefully without them.
 
-| Component Down | Behavior |
-|----------------|----------|
-| Gemini API | BM25 + Graphiti only; embeddings queued for retry |
-| Reranker model | Returns Stage 5 merged results without reranking |
-| Query expander | Uses original query only |
-| Graphiti API | Returns file search results only |
-| SQLite index corrupt | Auto-reindex; returns Graphiti-only results meanwhile |
+## Development
+
+```bash
+# Install dev dependencies
+pip install -e ".[dev]"
+
+# Run tests
+pytest tests/
+
+# Lint
+ruff check src/ tests/
+```
 
 ## License
 
