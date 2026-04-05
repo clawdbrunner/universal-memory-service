@@ -57,12 +57,12 @@ async def _ensure_init() -> None:
     _config = load_config()
     await init_db(_config.index.db_path)
 
-    embedding = EmbeddingService(_config)
-    vector = VectorStore(_config)
-    _pipeline = RetrievalPipeline(_config, embedding, vector)
-    _file_writer = FileWriter(_config)
-    _graphiti_writer = GraphitiWriter(_config)
-    _indexer = Indexer(_config, embedding, vector)
+    embedding = EmbeddingService()
+    vector = VectorStore()
+    _pipeline = RetrievalPipeline()
+    _file_writer = FileWriter()
+    _graphiti_writer = GraphitiWriter()
+    _indexer = Indexer(embedding, vector)
 
 
 # ---------------------------------------------------------------------------
