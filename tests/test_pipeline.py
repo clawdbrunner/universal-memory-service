@@ -99,8 +99,8 @@ class TestNormalizeScores:
         result = _normalize_scores([("c1", 5.0)])
         assert len(result) == 1
         assert result[0][0] == "c1"
-        # (5 - 5) / 1.0 = 0.0
-        assert result[0][1] == pytest.approx(0.0)
+        # Single nonzero score normalizes to 1.0 (fully relevant)
+        assert result[0][1] == pytest.approx(1.0)
 
     def test_two_items(self):
         result = _normalize_scores([("c1", 1.0), ("c2", 3.0)])
@@ -117,7 +117,8 @@ class TestNormalizeScores:
     def test_all_same_score(self):
         result = _normalize_scores([("c1", 5.0), ("c2", 5.0)])
         for _, score in result:
-            assert score == pytest.approx(0.0)
+            # All identical nonzero scores normalize to 1.0
+            assert score == pytest.approx(1.0)
 
     def test_negative_scores(self):
         result = _normalize_scores([("c1", -3.0), ("c2", -1.0)])

@@ -249,7 +249,10 @@ def _normalize_scores(pairs: list[tuple[str, float]]) -> list[tuple[str, float]]
     scores = list(best.values())
     max_s = max(scores) if scores else 1.0
     min_s = min(scores) if scores else 0.0
-    range_s = max_s - min_s if max_s != min_s else 1.0
+    if max_s == min_s:
+        # All scores identical — if nonzero, treat as fully relevant (1.0)
+        return [(cid, 1.0 if max_s > 0 else 0.0) for cid, s in best.items()]
+    range_s = max_s - min_s
     return [(cid, (s - min_s) / range_s) for cid, s in best.items()]
 
 
