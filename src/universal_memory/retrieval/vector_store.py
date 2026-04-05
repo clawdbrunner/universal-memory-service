@@ -79,8 +79,11 @@ class VectorStore:
         candidates = self._cache
         if filter_paths:
             allowed_ids: set[str] = set()
-            for fp in filter_paths:
-                allowed_ids.update(self._file_index.get(fp, set()))
+            for file_path, chunk_ids in self._file_index.items():
+                for prefix in filter_paths:
+                    if prefix in file_path:
+                        allowed_ids.update(chunk_ids)
+                        break
             candidates = {k: v for k, v in candidates.items() if k in allowed_ids}
 
         scores: list[tuple[str, float]] = []

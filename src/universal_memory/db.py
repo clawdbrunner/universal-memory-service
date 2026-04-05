@@ -183,17 +183,18 @@ async def search_bm25(
     """Run a BM25 search against FTS5. Returns ranked results with scores."""
     async with get_connection(db_path) as db:
         if filter_paths:
-            placeholders = ",".join("?" for _ in filter_paths)
+            like_clauses = " OR ".join("c.file_path LIKE ?" for _ in filter_paths)
             sql = f"""
                 SELECT c.*, bm25(chunks_fts) AS score
                 FROM chunks_fts f
                 JOIN chunks c ON c.rowid = f.rowid
                 WHERE chunks_fts MATCH ?
-                  AND c.file_path IN ({placeholders})
+                  AND ({like_clauses})
                 ORDER BY score
                 LIMIT ?
             """
-            params: list[Any] = [query, *filter_paths, limit]
+            like_params = [f"%{fp}%" for fp in filter_paths]
+            params: list[Any] = [query, *like_params, limit]
         else:
             sql = """
                 SELECT c.*, bm25(chunks_fts) AS score
