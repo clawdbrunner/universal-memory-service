@@ -60,8 +60,14 @@ class EmbeddingService:
         # Stick with the provider that was used previously to avoid dimension mismatch
         if self._provider_used == "gemini":
             embeddings = await self._generate_gemini(uncached_texts)
+            if not embeddings:
+                logger.warning("Gemini failed with provider lock, falling back to OpenAI")
+                embeddings = await self._generate_openai(uncached_texts)
         elif self._provider_used == "openai":
             embeddings = await self._generate_openai(uncached_texts)
+            if not embeddings:
+                logger.warning("OpenAI failed with provider lock, falling back to Gemini")
+                embeddings = await self._generate_gemini(uncached_texts)
         else:
             # First call: try Gemini first, fallback to OpenAI
             embeddings = await self._generate_gemini(uncached_texts)

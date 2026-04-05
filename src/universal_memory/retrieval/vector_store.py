@@ -42,6 +42,11 @@ class VectorStore:
             self._file_index.setdefault(file_path, set()).add(chunk_id)
         self._loaded = True
         logger.info("Loaded %d embeddings into memory", len(self._cache))
+        logger.debug("_ensure_loaded: %d embeddings loaded", len(self._cache))
+        if self._cache:
+            first_id = next(iter(self._cache))
+            first_emb = self._cache[first_id]
+            logger.debug("_ensure_loaded: first embedding id=%s dims=%d first3=%s", first_id[:8], len(first_emb), first_emb[:3])
 
     async def upsert(self, chunk_id: str, embedding: list[float]) -> None:
         """Insert or update an embedding in SQLite and in-memory cache."""
@@ -104,6 +109,14 @@ class VectorStore:
         )
 
         scores.sort(key=lambda x: x[1], reverse=True)
+        logger.debug("search: computed %d scores, top3=%s", len(scores), [(s[0][:8], f"{s[1]:.4f}") for s in scores[:3]])
+
+        if candidates and query_embedding:
+            sample_id = next(iter(candidates))
+            sample_emb = candidates[sample_id]
+            sample_score = _cosine_similarity(query_embedding, sample_emb)
+            logger.debug("search: sample cosine query_vs_%s dims_q=%d dims_s=%d score=%.4f", sample_id[:8], len(query_embedding), len(sample_emb), sample_score)
+
         return scores[:top_k]
 
     async def delete_for_file(self, file_path: str) -> None:

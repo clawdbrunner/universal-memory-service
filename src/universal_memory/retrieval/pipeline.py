@@ -74,7 +74,8 @@ class RetrievalPipeline:
             try:
                 for q in queries:
                     embs = await self.embeddings.generate([q])
-                    if embs:
+                    if embs and embs[0]:
+                        logger.debug("pipeline: query embedding dims=%d norm=%.4f first3=%s", len(embs[0]), math.sqrt(sum(x*x for x in embs[0])), embs[0][:3])
                         hits = await self.vector_store.search(
                             embs[0], top_k=20, filter_paths=filter_paths
                         )
