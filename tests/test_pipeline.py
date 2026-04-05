@@ -386,7 +386,7 @@ class TestPipelineSearch:
         await pipeline.search(req)
 
         pipeline.graphiti.search.assert_called_once_with(
-            "q", group_ids=["engineering"], limit=10
+            "q", group_ids=["memory-engineering", "memory-shared"], limit=10
         )
 
 
