@@ -1,0 +1,69 @@
+service:
+  host: "127.0.0.1"
+  port: 8002
+  auth_token: null
+
+memory:
+  data_dir: "~/.memory-service/data"
+  extensions: [".md"]
+  daily_log_format: "{date}.md"
+
+agents:
+  alice: { department: null }
+  bob:   { department: "engineering" }
+  carol: { department: "research" }
+
+sync:
+  enabled: true
+  debounce_ms: 500
+  targets: []
+
+index:
+  db_path: "~/.memory-service/index.db"
+  chunk_size_tokens: 400
+  chunk_overlap_tokens: 80
+
+embedding:
+  provider: "gemini"
+  model: "gemini-embedding-001"
+  api_key_env: "GEMINI_API_KEY"
+  batch_size: 100
+
+models:
+  reranker:
+    enabled: true
+    model_path: "~/.memory-service/models/bge-reranker-v2-m3-Q4_K_M.gguf"
+    candidates: 30
+    blend_weight: 0.85
+  query_expander:
+    enabled: true
+    model_path: "~/.memory-service/models/qwen3-1.7b-Q4_K_M.gguf"
+    max_expansions: 2
+
+search:
+  weights:
+    vector: 0.40
+    bm25: 0.20
+    graphiti: 0.25
+  temporal_decay:
+    enabled: true
+    half_life_days: 30
+    exempt_files: ["MEMORY.md"]
+  mmr:
+    enabled: true
+    lambda: 0.7
+  default_max_results: 10
+  default_min_score: 0.3
+
+graphiti:
+  url: "http://localhost:8001"
+  timeout_seconds: 10
+
+write:
+  daily_log_header_format: "## [{time}] {author}"
+  append_newlines: 2
+  file_lock: true
+
+logging:
+  level: "INFO"
+  file: "~/.memory-service/logs/service.log"
