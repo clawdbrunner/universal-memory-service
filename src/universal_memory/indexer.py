@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import fnmatch
 import hashlib
 import logging
 import time
@@ -24,6 +25,23 @@ from .retrieval.embeddings import EmbeddingService
 from .retrieval.vector_store import VectorStore
 
 logger = logging.getLogger(__name__)
+
+
+def _should_ignore(file_path: str, patterns: list[str]) -> bool:
+    """Check if a file path matches any ignore pattern.
+
+    For patterns starting with ``*``, use fnmatch against the filename.
+    For other patterns, check if any path segment equals the pattern.
+    """
+    segments = Path(file_path).parts
+    for pattern in patterns:
+        if pattern.startswith("*"):
+            if fnmatch.fnmatch(segments[-1], pattern):
+                return True
+        else:
+            if pattern in segments:
+                return True
+    return False
 
 
 class IndexResult:
@@ -142,9 +160,12 @@ class Indexer:
         """
         root = Path(directory) if directory else Path(self._config.memory.data_dir)
         extensions = set(self._config.memory.extensions)
+        ignore = self._config.memory.ignore_patterns
         total = 0
         for path in sorted(root.rglob("*")):
             if path.is_file() and path.suffix in extensions:
+                if _should_ignore(str(path), ignore):
+                    continue
                 result = await self.index_file(str(path))
                 total += result.chunks_stored
         return total

@@ -11,6 +11,7 @@ from typing import Any
 import watchfiles
 
 from .config import get_config
+from .indexer import _should_ignore
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,7 @@ class FileWatcher:
         cfg = get_config()
         self._data_dir = Path(cfg.memory.data_dir)
         self._extensions: set[str] = set(cfg.memory.extensions)
+        self._ignore_patterns: list[str] = cfg.memory.ignore_patterns
         self._debounce_ms: int = cfg.sync.debounce_ms
         self._on_change = on_change
         self._task: asyncio.Task[None] | None = None
@@ -69,6 +71,8 @@ class FileWatcher:
     # ------------------------------------------------------------------
 
     def _match(self, path: str) -> bool:
+        if _should_ignore(path, self._ignore_patterns):
+            return False
         return Path(path).suffix in self._extensions
 
     @staticmethod

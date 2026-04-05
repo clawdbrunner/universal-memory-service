@@ -7,6 +7,17 @@ memory:
   data_dir: "~/.memory-service/data"
   extensions: [".md"]
   daily_log_format: "{date}.md"
+  ignore_patterns:
+    - "node_modules"
+    - ".venv"
+    - ".git"
+    - "__pycache__"
+    - ".DS_Store"
+    - "dist"
+    - "build"
+    - ".next"
+    - ".cache"
+    - "*.pyc"
 
 agents:
   alice: { department: null }

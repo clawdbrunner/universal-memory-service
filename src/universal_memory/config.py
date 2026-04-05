@@ -34,6 +34,10 @@ class MemoryConfig:
     data_dir: str = "~/.memory-service/data"
     extensions: list[str] = field(default_factory=lambda: [".md"])
     daily_log_format: str = "{date}.md"
+    ignore_patterns: list[str] = field(default_factory=lambda: [
+        "node_modules", ".venv", ".git", "__pycache__", ".DS_Store",
+        "dist", "build", ".next", ".cache", "*.pyc",
+    ])
 
     def __post_init__(self) -> None:
         self.data_dir = _expand(self.data_dir)
