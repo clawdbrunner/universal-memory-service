@@ -73,17 +73,15 @@ class QueryExpanderService:
 
         try:
             max_expansions = self._config.models.query_expander.max_expansions
-            prompt = (
-                f'Generate {max_expansions} alternative search queries for: "{query}"\n'
-                "Return only the queries, one per line. No numbering or explanation.\n"
-            )
-            output = self._model.create_completion(
-                prompt,
+            output = self._model.create_chat_completion(
+                messages=[
+                    {"role": "system", "content": "You generate alternative search queries. Return only the queries, one per line."},
+                    {"role": "user", "content": f'Generate {max_expansions} alternative phrasings for: "{query}"'},
+                ],
                 max_tokens=128,
                 temperature=0.7,
-                stop=["\n\n"],
             )
-            text = output["choices"][0]["text"].strip()
+            text = output["choices"][0]["message"]["content"].strip()
             for line in text.split("\n"):
                 line = line.strip().strip("0123456789.-) ")
                 if line and line != query and len(line) > 3:

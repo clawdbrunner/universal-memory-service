@@ -34,12 +34,12 @@ embedding:
 models:
   reranker:
     enabled: true
-    model_path: "~/.memory-service/models/bge-reranker-v2-m3-Q4_K_M.gguf"
+    model_path: "~/.memory-service/models/bge-reranker-v2-m3.Q4_K_M.gguf"
     candidates: 30
     blend_weight: 0.85
   query_expander:
     enabled: true
-    model_path: "~/.memory-service/models/qwen3-1.7b-Q4_K_M.gguf"
+    model_path: "~/.memory-service/models/qwen3-1.7b.Q4_K_M.gguf"
     max_expansions: 2
 
 search:
