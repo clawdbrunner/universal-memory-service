@@ -31,10 +31,10 @@ class RetrievalPipeline:
     Stages: expand -> vector search -> bm25 search -> graphiti search -> merge -> rerank
     """
 
-    def __init__(self) -> None:
+    def __init__(self, vector_store: VectorStore | None = None, embeddings: EmbeddingService | None = None) -> None:
         self._config = get_config()
-        self.embeddings = EmbeddingService()
-        self.vector_store = VectorStore()
+        self.embeddings = embeddings or EmbeddingService()
+        self.vector_store = vector_store or VectorStore()
         self.bm25 = BM25Search()
         self.graphiti = GraphitiClient()
         self.reranker = RerankerService()

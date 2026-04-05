@@ -58,6 +58,10 @@ pip install -e ".[dev]"
 ```bash
 cp config/config.example.yaml ~/.memory-service/config.yaml
 # Edit to set your data_dir, API keys, agent mappings
+
+# Required for vector embeddings:
+export GEMINI_API_KEY=your-key-here
+# Without this key, the service falls back to BM25-only search (no vector embeddings).
 ```
 
 ### Run

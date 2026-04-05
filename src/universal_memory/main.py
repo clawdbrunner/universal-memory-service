@@ -36,7 +36,7 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     # --- Services ---
     embedding_service = EmbeddingService()
     vector_store = VectorStore()
-    pipeline = RetrievalPipeline()
+    pipeline = RetrievalPipeline(vector_store=vector_store, embeddings=embedding_service)
     file_writer = FileWriter()
     graphiti_writer = GraphitiWriter()
     indexer = Indexer(embedding_service, vector_store)

@@ -26,6 +26,8 @@ index:
 embedding:
   provider: "gemini"
   model: "gemini-embedding-001"
+  # Required: Set GEMINI_API_KEY env var for embedding generation
+  # Without it, search uses BM25 only (no vector search)
   api_key_env: "GEMINI_API_KEY"
   batch_size: 100
 
