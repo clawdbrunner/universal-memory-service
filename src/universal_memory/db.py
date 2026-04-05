@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import hashlib
+import logging
 from pathlib import Path
 from typing import Any, AsyncIterator
 
@@ -11,6 +12,8 @@ import aiosqlite
 
 from .config import get_config
 from .models import Chunk
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Schema
@@ -105,6 +108,17 @@ async def init_db(db_path: str | None = None) -> None:
     async with aiosqlite.connect(path) as db:
         await db.executescript(_SCHEMA)
         await db.commit()
+
+    # Migrate pre-existing databases: add _fts_id column if missing.
+    # CREATE TABLE IF NOT EXISTS won't alter an existing table, so
+    # databases created before _fts_id was added need this migration.
+    async with aiosqlite.connect(path) as db:
+        try:
+            await db.execute("ALTER TABLE chunks ADD COLUMN _fts_id INTEGER")
+            logger.info("Added _fts_id column to chunks table")
+            await db.commit()
+        except Exception:
+            pass  # Column already exists, that's fine
 
 
 @contextlib.asynccontextmanager
