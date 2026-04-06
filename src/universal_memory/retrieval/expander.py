@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from pathlib import Path
 
 from ..config import get_config
@@ -69,6 +70,10 @@ class QueryExpanderService:
             return queries
 
         if not self._ensure_model():
+            now = time.time()
+            if now - getattr(self, "_last_expand_warn", 0) > 60:
+                logger.warning("Query expansion skipped: model not loaded")
+                self._last_expand_warn = now
             return queries
 
         try:
@@ -98,7 +103,7 @@ class QueryExpanderService:
                 queries.append(line)
                 if len(queries) >= max_expansions + 1:
                     break
-        except Exception:
-            logger.warning("Query expansion failed", exc_info=True)
+        except Exception as exc:
+            logger.warning("Query expansion failed: %s", exc, exc_info=True)
 
         return queries

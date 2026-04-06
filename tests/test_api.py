@@ -456,6 +456,16 @@ class TestStatusEndpoint:
             "last_failure": None,
         }
 
+        # Mock pipeline reranker/expander for model status
+        reranker = MagicMock()
+        reranker._model = None
+        reranker._config.models.reranker.model_path = "/models/reranker.onnx"
+        expander = MagicMock()
+        expander._model = None
+        expander._config.models.query_expander.model_path = "/models/expander.gguf"
+        app.state.pipeline.reranker = reranker
+        app.state.pipeline.expander = expander
+
         with patch("universal_memory.db.get_stats", new_callable=AsyncMock) as mock_stats:
             mock_stats.return_value = {
                 "files_indexed": 42,
@@ -474,10 +484,22 @@ class TestStatusEndpoint:
         assert data["file_watcher"]["running"] is True
         assert data["embedding_provider"]["last_success"] is not None
         assert data["embedding_provider"]["last_failure"] is None
+        assert data["models"]["reranker"]["loaded"] is False
+        assert data["models"]["query_expander"]["loaded"] is False
 
     def test_status_includes_watcher_state(self, app, client):
         type(app.state.watcher).running = PropertyMock(return_value=False)
         app.state.indexer.embedding_health = {"last_success": None, "last_failure": None}
+
+        # Mock pipeline reranker/expander for model status
+        reranker = MagicMock()
+        reranker._model = None
+        reranker._config.models.reranker.model_path = "/models/reranker.onnx"
+        expander = MagicMock()
+        expander._model = None
+        expander._config.models.query_expander.model_path = "/models/expander.gguf"
+        app.state.pipeline.reranker = reranker
+        app.state.pipeline.expander = expander
 
         with patch("universal_memory.db.get_stats", new_callable=AsyncMock) as mock_stats:
             mock_stats.return_value = {}

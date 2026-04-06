@@ -203,6 +203,16 @@ async def status(request: Request) -> dict:
         uptime_seconds=round(uptime, 2),
         index=stats,
         embedding_provider=state.indexer.embedding_health,
+        models={
+            "reranker": {
+                "loaded": state.pipeline.reranker._model is not None,
+                "model_path": str(state.pipeline.reranker._config.models.reranker.model_path),
+            },
+            "query_expander": {
+                "loaded": state.pipeline.expander._model is not None,
+                "model_path": str(state.pipeline.expander._config.models.query_expander.model_path),
+            },
+        },
         file_watcher={"running": state.watcher.running},
     )
     return resp.to_dict()

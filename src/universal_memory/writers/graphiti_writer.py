@@ -30,9 +30,9 @@ class GraphitiWriter:
         if not gid and author:
             agent = self._config.agents.get(author)
             if agent and agent.department:
-                gid = agent.department
+                gid = f"memory-{agent.department}"
             else:
-                gid = author
+                gid = f"memory-{author}"
 
         try:
             result = await self._client.write(content, group_id=gid, author=author)
