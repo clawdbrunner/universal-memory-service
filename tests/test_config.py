@@ -29,6 +29,7 @@ from universal_memory.config import (
     _parse_raw,
     load_config,
     reset_config,
+    resolve_group_id,
 )
 
 
@@ -116,6 +117,8 @@ class TestDataclassDefaults:
         cfg = GraphitiConfig()
         assert cfg.url == "http://localhost:8001"
         assert cfg.timeout_seconds == 10
+        assert cfg.group_id_prefix == ""
+        assert cfg.group_id_map == {}
 
     def test_sync_defaults(self):
         cfg = SyncConfig()
@@ -361,3 +364,70 @@ class TestLoadConfig:
         assert cfg.search.weights.vector == 0.5
         assert cfg.graphiti.url == "http://localhost:9001"
         assert cfg.sync.enabled is False
+
+
+# ---------------------------------------------------------------------------
+# resolve_group_id
+# ---------------------------------------------------------------------------
+
+
+class TestResolveGroupId:
+    def test_map_takes_precedence(self):
+        cfg = FullConfig(graphiti=GraphitiConfig(
+            group_id_prefix="memory-",
+            group_id_map={"clawd": "clawdbot-main"},
+        ))
+        assert resolve_group_id("clawd", cfg) == "clawdbot-main"
+
+    def test_prefix_used_when_no_map_entry(self):
+        cfg = FullConfig(graphiti=GraphitiConfig(
+            group_id_prefix="memory-",
+            group_id_map={},
+        ))
+        assert resolve_group_id("alice", cfg) == "memory-alice"
+
+    def test_empty_prefix_bare_author(self):
+        cfg = FullConfig(graphiti=GraphitiConfig(
+            group_id_prefix="",
+            group_id_map={},
+        ))
+        assert resolve_group_id("alice", cfg) == "alice"
+
+    def test_map_overrides_prefix(self):
+        cfg = FullConfig(graphiti=GraphitiConfig(
+            group_id_prefix="x-",
+            group_id_map={"piper": "clawdbot-piper"},
+        ))
+        assert resolve_group_id("piper", cfg) == "clawdbot-piper"
+        assert resolve_group_id("other", cfg) == "x-other"
+
+
+# ---------------------------------------------------------------------------
+# Graphiti config parsing
+# ---------------------------------------------------------------------------
+
+
+class TestGraphitiConfigParsing:
+    def test_group_id_map_parsed(self):
+        cfg = _parse_raw({
+            "graphiti": {
+                "url": "http://localhost:8001",
+                "group_id_prefix": "",
+                "group_id_map": {
+                    "clawd": "clawdbot-main",
+                    "piper": "clawdbot-piper",
+                },
+            }
+        })
+        assert cfg.graphiti.group_id_prefix == ""
+        assert cfg.graphiti.group_id_map == {
+            "clawd": "clawdbot-main",
+            "piper": "clawdbot-piper",
+        }
+
+    def test_group_id_prefix_parsed(self):
+        cfg = _parse_raw({
+            "graphiti": {"group_id_prefix": "memory-"}
+        })
+        assert cfg.graphiti.group_id_prefix == "memory-"
+        assert cfg.graphiti.group_id_map == {}

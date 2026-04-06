@@ -7,7 +7,7 @@ import math
 import time
 from datetime import datetime, timezone
 
-from ..config import get_config
+from ..config import get_config, resolve_group_id
 from ..db import get_chunk
 from ..models import SearchRequest, SearchResponse, SearchResult
 from .bm25 import BM25Search
@@ -46,16 +46,20 @@ class RetrievalPipeline:
 
         # Stage 1: Query expansion
         t0 = time.perf_counter()
+        expansion_status = "success"
         try:
             if request.expand:
-                queries = await self.expander.expand(request.query)
+                expand_result = await self.expander.expand(request.query)
+                queries = expand_result.queries
+                expansion_status = expand_result.status
             else:
                 queries = [request.query]
         except Exception:
             logger.warning("Expand stage failed", exc_info=True)
             queries = [request.query]
+            expansion_status = "error"
         timing_ms["expand"] = (time.perf_counter() - t0) * 1000
-        logger.debug("search: expanded queries=%s", queries)
+        logger.debug("search: expanded queries=%s status=%s", queries, expansion_status)
 
         # Derive filter_paths and group_ids from request scope
         filter_paths: list[str] | None = None
@@ -64,13 +68,17 @@ class RetrievalPipeline:
             agent_info = self._config.agents.get(request.author)
             dept = agent_info.department if agent_info else None
             filter_paths = [f"agents/{request.author}/", "shared/"]
-            group_ids = [f"memory-{request.author}"]
+            group_ids = [resolve_group_id(request.author, self._config)]
             if dept:
                 filter_paths.append(f"departments/{dept}/")
-                group_ids.extend([f"memory-{dept}", "memory-shared"])
+                group_ids.append(resolve_group_id(dept, self._config))
+                group_ids.append(resolve_group_id("shared", self._config))
         elif request.department:
             filter_paths = [f"departments/{request.department}/", "shared/"]
-            group_ids = [f"memory-{request.department}", "memory-shared"]
+            group_ids = [
+                resolve_group_id(request.department, self._config),
+                resolve_group_id("shared", self._config),
+            ]
 
         logger.debug("search: filter_paths=%s group_ids=%s", filter_paths, group_ids)
 
@@ -173,6 +181,7 @@ class RetrievalPipeline:
             expanded_queries=queries,
             sources_queried=sources_queried,
             timing_ms=timing_ms,
+            expansion_status=expansion_status,
         )
 
     async def _merge(

@@ -23,6 +23,16 @@ class RerankerService:
         self._model = None
         self._config = get_config()
         self._blend_weight = self._config.models.reranker.blend_weight
+        self._model_status: str = "disabled" if not self._config.models.reranker.enabled else "loaded"
+        self._model_error: str | None = None
+
+    @property
+    def model_status(self) -> str:
+        return self._model_status
+
+    @property
+    def model_error(self) -> str | None:
+        return self._model_error
 
     def _ensure_model(self) -> bool:
         """Lazy-load the reranker model. Returns True if available."""
@@ -30,9 +40,12 @@ class RerankerService:
             return True
         spec = self._config.models.reranker
         if not spec.enabled:
+            self._model_status = "disabled"
             return False
         model_path = Path(spec.model_path).expanduser()
         if not model_path.exists():
+            self._model_status = "model_file_missing"
+            self._model_error = f"File not found: {model_path}"
             logger.warning("Reranker model not found at %s", model_path)
             return False
         try:
@@ -45,9 +58,13 @@ class RerankerService:
                 verbose=False,
                 embedding=True,
             )
+            self._model_status = "loaded"
+            self._model_error = None
             logger.info("Reranker model loaded from %s", model_path)
             return True
-        except Exception:
+        except Exception as e:
+            self._model_status = "load_error"
+            self._model_error = str(e)
             logger.warning("Failed to load reranker model", exc_info=True)
             return False
 

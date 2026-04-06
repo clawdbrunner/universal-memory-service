@@ -460,9 +460,13 @@ class TestStatusEndpoint:
         reranker = MagicMock()
         reranker._model = None
         reranker._config.models.reranker.model_path = "/models/reranker.onnx"
+        reranker.model_status = "model_file_missing"
+        reranker.model_error = "File not found: /models/reranker.onnx"
         expander = MagicMock()
         expander._model = None
         expander._config.models.query_expander.model_path = "/models/expander.gguf"
+        expander.model_status = "model_file_missing"
+        expander.model_error = "File not found: /models/expander.gguf"
         app.state.pipeline.reranker = reranker
         app.state.pipeline.expander = expander
 
@@ -485,7 +489,11 @@ class TestStatusEndpoint:
         assert data["embedding_provider"]["last_success"] is not None
         assert data["embedding_provider"]["last_failure"] is None
         assert data["models"]["reranker"]["loaded"] is False
+        assert data["models"]["reranker"]["status"] == "model_file_missing"
+        assert data["models"]["reranker"]["error"] is not None
         assert data["models"]["query_expander"]["loaded"] is False
+        assert data["models"]["query_expander"]["status"] == "model_file_missing"
+        assert data["models"]["query_expander"]["error"] is not None
 
     def test_status_includes_watcher_state(self, app, client):
         type(app.state.watcher).running = PropertyMock(return_value=False)
@@ -495,9 +503,13 @@ class TestStatusEndpoint:
         reranker = MagicMock()
         reranker._model = None
         reranker._config.models.reranker.model_path = "/models/reranker.onnx"
+        reranker.model_status = "disabled"
+        reranker.model_error = None
         expander = MagicMock()
         expander._model = None
         expander._config.models.query_expander.model_path = "/models/expander.gguf"
+        expander.model_status = "disabled"
+        expander.model_error = None
         app.state.pipeline.reranker = reranker
         app.state.pipeline.expander = expander
 

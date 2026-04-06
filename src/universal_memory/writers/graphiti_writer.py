@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 
-from ..config import get_config
+from ..config import get_config, resolve_group_id
 from ..retrieval.graphiti import GraphitiClient
 
 logger = logging.getLogger(__name__)
@@ -26,13 +26,9 @@ class GraphitiWriter:
         """Write *content* to Graphiti, resolving group ID if needed."""
         gid = group_id
 
-        # Auto-resolve from agent config when no explicit ID
+        # Auto-resolve using group_id_map / prefix when no explicit ID
         if not gid and author:
-            agent = self._config.agents.get(author)
-            if agent and agent.department:
-                gid = f"memory-{agent.department}"
-            else:
-                gid = f"memory-{author}"
+            gid = resolve_group_id(author, self._config)
 
         try:
             result = await self._client.write(content, group_id=gid, author=author)

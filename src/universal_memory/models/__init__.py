@@ -150,6 +150,7 @@ class SearchResponse:
     expanded_queries: list[str] = field(default_factory=list)
     sources_queried: list[str] = field(default_factory=list)
     timing_ms: dict[str, float] = field(default_factory=dict)
+    expansion_status: str = "success"
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -159,6 +160,7 @@ class SearchResponse:
             "expanded_queries": self.expanded_queries,
             "sources_queried": self.sources_queried,
             "timing_ms": self.timing_ms,
+            "expansion_status": self.expansion_status,
         }
 
 

@@ -210,6 +210,15 @@ class TestSearchResponse:
         assert resp.query == "test"
         assert resp.timing_ms == {}
 
+    def test_expansion_status_default(self):
+        resp = SearchResponse(results=[], query="test")
+        assert resp.expansion_status == "success"
+
+    def test_expansion_status_in_dict(self):
+        resp = SearchResponse(results=[], query="q", expansion_status="skipped_pattern")
+        d = resp.to_dict()
+        assert d["expansion_status"] == "skipped_pattern"
+
     def test_timing_ms_field(self):
         resp = SearchResponse(
             results=[],
@@ -237,6 +246,7 @@ class TestSearchResponse:
         assert d["expanded_queries"] == ["q alt"]
         assert d["sources_queried"] == ["files"]
         assert d["timing_ms"] == {"total": 100}
+        assert d["expansion_status"] == "success"
 
     def test_multiple_results(self):
         results = [

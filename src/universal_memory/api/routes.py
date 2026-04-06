@@ -206,10 +206,14 @@ async def status(request: Request) -> dict:
         models={
             "reranker": {
                 "loaded": state.pipeline.reranker._model is not None,
+                "status": state.pipeline.reranker.model_status,
+                "error": state.pipeline.reranker.model_error,
                 "model_path": str(state.pipeline.reranker._config.models.reranker.model_path),
             },
             "query_expander": {
                 "loaded": state.pipeline.expander._model is not None,
+                "status": state.pipeline.expander.model_status,
+                "error": state.pipeline.expander.model_error,
                 "model_path": str(state.pipeline.expander._config.models.query_expander.model_path),
             },
         },

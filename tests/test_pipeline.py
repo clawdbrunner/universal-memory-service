@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from universal_memory.models import SearchRequest, SearchResponse, SearchResult
+from universal_memory.retrieval.expander import ExpandResult
 from universal_memory.retrieval.pipeline import (
     RetrievalPipeline,
     _chunk_to_result,
@@ -67,6 +68,8 @@ def mock_config():
     cfg.search.mmr.enabled = True
     cfg.search.mmr.lambda_ = 0.7
     cfg.models.reranker.candidates = 30
+    cfg.graphiti.group_id_prefix = ""
+    cfg.graphiti.group_id_map = {}
     return cfg
 
 
@@ -259,7 +262,7 @@ class TestMMRDedup:
 class TestPipelineSearch:
     @pytest.mark.asyncio
     async def test_basic_search(self, pipeline):
-        pipeline.expander.expand = AsyncMock(return_value=["test query"])
+        pipeline.expander.expand = AsyncMock(return_value=ExpandResult(queries=["test query"]))
         pipeline.embeddings.generate = AsyncMock(return_value=[[0.1, 0.2]])
         pipeline.vector_store.search = AsyncMock(return_value=[("c1", 0.9)])
         pipeline.bm25.search = AsyncMock(return_value=[("c1", 0.8)])
@@ -296,7 +299,7 @@ class TestPipelineSearch:
 
     @pytest.mark.asyncio
     async def test_rerank_disabled(self, pipeline):
-        pipeline.expander.expand = AsyncMock(return_value=["q"])
+        pipeline.expander.expand = AsyncMock(return_value=ExpandResult(queries=["q"]))
         pipeline.embeddings.generate = AsyncMock(return_value=[[0.1]])
         pipeline.vector_store.search = AsyncMock(return_value=[("c1", 0.9)])
         pipeline.bm25.search = AsyncMock(return_value=[])
@@ -314,7 +317,7 @@ class TestPipelineSearch:
 
     @pytest.mark.asyncio
     async def test_min_score_filters_low_results(self, pipeline):
-        pipeline.expander.expand = AsyncMock(return_value=["q"])
+        pipeline.expander.expand = AsyncMock(return_value=ExpandResult(queries=["q"]))
         pipeline.embeddings.generate = AsyncMock(return_value=[[0.1]])
         pipeline.vector_store.search = AsyncMock(return_value=[("c1", 0.05)])
         pipeline.bm25.search = AsyncMock(return_value=[])
@@ -335,7 +338,7 @@ class TestPipelineSearch:
 
     @pytest.mark.asyncio
     async def test_sources_only_files(self, pipeline):
-        pipeline.expander.expand = AsyncMock(return_value=["q"])
+        pipeline.expander.expand = AsyncMock(return_value=ExpandResult(queries=["q"]))
         pipeline.embeddings.generate = AsyncMock(return_value=[[0.1]])
         pipeline.vector_store.search = AsyncMock(return_value=[])
         pipeline.bm25.search = AsyncMock(return_value=[])
@@ -350,7 +353,7 @@ class TestPipelineSearch:
 
     @pytest.mark.asyncio
     async def test_sources_only_graphiti(self, pipeline):
-        pipeline.expander.expand = AsyncMock(return_value=["q"])
+        pipeline.expander.expand = AsyncMock(return_value=ExpandResult(queries=["q"]))
         pipeline.graphiti.search = AsyncMock(
             return_value=[_make_search_result(source="graphiti")]
         )
@@ -366,7 +369,7 @@ class TestPipelineSearch:
 
     @pytest.mark.asyncio
     async def test_timing_keys_always_present(self, pipeline):
-        pipeline.expander.expand = AsyncMock(return_value=["q"])
+        pipeline.expander.expand = AsyncMock(return_value=ExpandResult(queries=["q"]))
         pipeline.embeddings.generate = AsyncMock(return_value=[])
         pipeline.vector_store.search = AsyncMock(return_value=[])
         pipeline.bm25.search = AsyncMock(return_value=[])
@@ -381,7 +384,7 @@ class TestPipelineSearch:
 
     @pytest.mark.asyncio
     async def test_department_passed_to_graphiti(self, pipeline):
-        pipeline.expander.expand = AsyncMock(return_value=["q"])
+        pipeline.expander.expand = AsyncMock(return_value=ExpandResult(queries=["q"]))
         pipeline.embeddings.generate = AsyncMock(return_value=[])
         pipeline.vector_store.search = AsyncMock(return_value=[])
         pipeline.bm25.search = AsyncMock(return_value=[])
@@ -392,7 +395,7 @@ class TestPipelineSearch:
         await pipeline.search(req)
 
         pipeline.graphiti.search.assert_called_once_with(
-            "q", group_ids=["memory-engineering", "memory-shared"], limit=10
+            "q", group_ids=["engineering", "shared"], limit=10
         )
 
 
@@ -418,7 +421,7 @@ class TestGracefulDegradation:
 
     @pytest.mark.asyncio
     async def test_vector_failure(self, pipeline):
-        pipeline.expander.expand = AsyncMock(return_value=["q"])
+        pipeline.expander.expand = AsyncMock(return_value=ExpandResult(queries=["q"]))
         pipeline.embeddings.generate = AsyncMock(
             side_effect=RuntimeError("embedding crash")
         )
@@ -441,7 +444,7 @@ class TestGracefulDegradation:
 
     @pytest.mark.asyncio
     async def test_bm25_failure(self, pipeline):
-        pipeline.expander.expand = AsyncMock(return_value=["q"])
+        pipeline.expander.expand = AsyncMock(return_value=ExpandResult(queries=["q"]))
         pipeline.embeddings.generate = AsyncMock(return_value=[[0.1]])
         pipeline.vector_store.search = AsyncMock(return_value=[("c1", 0.9)])
         pipeline.bm25.search = AsyncMock(side_effect=RuntimeError("fts5 broken"))
@@ -463,7 +466,7 @@ class TestGracefulDegradation:
 
     @pytest.mark.asyncio
     async def test_graphiti_failure(self, pipeline):
-        pipeline.expander.expand = AsyncMock(return_value=["q"])
+        pipeline.expander.expand = AsyncMock(return_value=ExpandResult(queries=["q"]))
         pipeline.embeddings.generate = AsyncMock(return_value=[])
         pipeline.vector_store.search = AsyncMock(return_value=[])
         pipeline.bm25.search = AsyncMock(return_value=[])
@@ -476,7 +479,7 @@ class TestGracefulDegradation:
 
     @pytest.mark.asyncio
     async def test_rerank_failure_returns_unranked(self, pipeline):
-        pipeline.expander.expand = AsyncMock(return_value=["q"])
+        pipeline.expander.expand = AsyncMock(return_value=ExpandResult(queries=["q"]))
         pipeline.embeddings.generate = AsyncMock(return_value=[[0.1]])
         pipeline.vector_store.search = AsyncMock(return_value=[("c1", 0.9)])
         pipeline.bm25.search = AsyncMock(return_value=[])
@@ -496,7 +499,7 @@ class TestGracefulDegradation:
 
     @pytest.mark.asyncio
     async def test_merge_failure(self, pipeline):
-        pipeline.expander.expand = AsyncMock(return_value=["q"])
+        pipeline.expander.expand = AsyncMock(return_value=ExpandResult(queries=["q"]))
         pipeline.embeddings.generate = AsyncMock(return_value=[[0.1]])
         pipeline.vector_store.search = AsyncMock(return_value=[("c1", 0.9)])
         pipeline.bm25.search = AsyncMock(return_value=[])
@@ -531,7 +534,7 @@ class TestGracefulDegradation:
 class TestEmbeddingStage:
     @pytest.mark.asyncio
     async def test_multiple_queries_each_embedded(self, pipeline):
-        pipeline.expander.expand = AsyncMock(return_value=["q1", "q2", "q3"])
+        pipeline.expander.expand = AsyncMock(return_value=ExpandResult(queries=["q1", "q2", "q3"]))
         pipeline.embeddings.generate = AsyncMock(return_value=[[0.1, 0.2]])
         pipeline.vector_store.search = AsyncMock(return_value=[])
         pipeline.bm25.search = AsyncMock(return_value=[])
@@ -544,7 +547,7 @@ class TestEmbeddingStage:
 
     @pytest.mark.asyncio
     async def test_empty_embedding_skips_vector_search(self, pipeline):
-        pipeline.expander.expand = AsyncMock(return_value=["q"])
+        pipeline.expander.expand = AsyncMock(return_value=ExpandResult(queries=["q"]))
         pipeline.embeddings.generate = AsyncMock(return_value=[])
         pipeline.vector_store.search = AsyncMock(return_value=[])
         pipeline.bm25.search = AsyncMock(return_value=[])
@@ -564,7 +567,7 @@ class TestEmbeddingStage:
 class TestMergeStage:
     @pytest.mark.asyncio
     async def test_vector_and_bm25_scores_combined(self, pipeline):
-        pipeline.expander.expand = AsyncMock(return_value=["q"])
+        pipeline.expander.expand = AsyncMock(return_value=ExpandResult(queries=["q"]))
         pipeline.embeddings.generate = AsyncMock(return_value=[[0.1]])
         pipeline.vector_store.search = AsyncMock(return_value=[("c1", 0.9)])
         pipeline.bm25.search = AsyncMock(return_value=[("c1", 0.8)])
@@ -588,7 +591,7 @@ class TestMergeStage:
 
     @pytest.mark.asyncio
     async def test_graphiti_results_included(self, pipeline):
-        pipeline.expander.expand = AsyncMock(return_value=["q"])
+        pipeline.expander.expand = AsyncMock(return_value=ExpandResult(queries=["q"]))
         pipeline.embeddings.generate = AsyncMock(return_value=[])
         pipeline.vector_store.search = AsyncMock(return_value=[])
         pipeline.bm25.search = AsyncMock(return_value=[])
@@ -609,7 +612,7 @@ class TestMergeStage:
 
     @pytest.mark.asyncio
     async def test_no_results_from_any_source(self, pipeline):
-        pipeline.expander.expand = AsyncMock(return_value=["q"])
+        pipeline.expander.expand = AsyncMock(return_value=ExpandResult(queries=["q"]))
         pipeline.embeddings.generate = AsyncMock(return_value=[])
         pipeline.vector_store.search = AsyncMock(return_value=[])
         pipeline.bm25.search = AsyncMock(return_value=[])

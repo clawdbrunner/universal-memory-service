@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import re
 import time
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..config import get_config
@@ -21,6 +22,14 @@ SKIP_PATTERNS = [
 ]
 
 
+@dataclass
+class ExpandResult:
+    """Result of query expansion including status information."""
+    queries: list[str] = field(default_factory=list)
+    status: str = "success"  # "success" | "skipped_pattern" | "model_unavailable" | "error"
+    error: str | None = None
+
+
 class QueryExpanderService:
     """Expand queries with alternative phrasings using a local LLM.
 
@@ -31,6 +40,16 @@ class QueryExpanderService:
     def __init__(self) -> None:
         self._model = None
         self._config = get_config()
+        self._model_status: str = "disabled" if not self._config.models.query_expander.enabled else "loaded"
+        self._model_error: str | None = None
+
+    @property
+    def model_status(self) -> str:
+        return self._model_status
+
+    @property
+    def model_error(self) -> str | None:
+        return self._model_error
 
     def _ensure_model(self) -> bool:
         """Lazy-load the query expander model. Returns True if available."""
@@ -38,9 +57,12 @@ class QueryExpanderService:
             return True
         spec = self._config.models.query_expander
         if not spec.enabled:
+            self._model_status = "disabled"
             return False
         model_path = Path(spec.model_path).expanduser()
         if not model_path.exists():
+            self._model_status = "model_file_missing"
+            self._model_error = f"File not found: {model_path}"
             logger.warning("Query expander model not found at %s", model_path)
             return False
         try:
@@ -52,9 +74,13 @@ class QueryExpanderService:
                 n_threads=4,
                 verbose=False,
             )
+            self._model_status = "loaded"
+            self._model_error = None
             logger.info("Query expander model loaded from %s", model_path)
             return True
-        except Exception:
+        except Exception as e:
+            self._model_status = "load_error"
+            self._model_error = str(e)
             logger.warning("Failed to load query expander model", exc_info=True)
             return False
 
@@ -62,19 +88,19 @@ class QueryExpanderService:
         """Return True if query matches skip patterns."""
         return any(p.search(query.strip()) for p in SKIP_PATTERNS)
 
-    async def expand(self, query: str) -> list[str]:
+    async def expand(self, query: str) -> ExpandResult:
         """Generate alternative phrasings for a query."""
         queries = [query]
 
         if self._should_skip(query):
-            return queries
+            return ExpandResult(queries=queries, status="skipped_pattern")
 
         if not self._ensure_model():
             now = time.time()
             if now - getattr(self, "_last_expand_warn", 0) > 60:
                 logger.warning("Query expansion skipped: model not loaded")
                 self._last_expand_warn = now
-            return queries
+            return ExpandResult(queries=queries, status="model_unavailable")
 
         try:
             max_expansions = self._config.models.query_expander.max_expansions
@@ -105,5 +131,6 @@ class QueryExpanderService:
                     break
         except Exception as exc:
             logger.warning("Query expansion failed: %s", exc, exc_info=True)
+            return ExpandResult(queries=queries, status="error", error=str(exc))
 
-        return queries
+        return ExpandResult(queries=queries, status="success")

@@ -135,6 +135,8 @@ class LoggingConfig:
 class GraphitiConfig:
     url: str = "http://localhost:8001"
     timeout_seconds: int = 10
+    group_id_prefix: str = ""
+    group_id_map: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -245,7 +247,13 @@ def _parse_raw(raw: dict[str, Any]) -> FullConfig:
         default_min_score=search_raw.get("default_min_score", 0.5),
     )
 
-    graphiti = _dict_to_dataclass(GraphitiConfig, raw.get("graphiti", {}))
+    graphiti_raw = raw.get("graphiti", {})
+    graphiti = GraphitiConfig(
+        url=graphiti_raw.get("url", "http://localhost:8001"),
+        timeout_seconds=graphiti_raw.get("timeout_seconds", 10),
+        group_id_prefix=graphiti_raw.get("group_id_prefix", ""),
+        group_id_map=graphiti_raw.get("group_id_map", {}),
+    ) if graphiti_raw else GraphitiConfig()
     sync = _dict_to_dataclass(SyncConfig, raw.get("sync", {}))
     write = _dict_to_dataclass(WriteConfig, raw.get("write", {}))
 
@@ -282,3 +290,17 @@ def reset_config() -> None:
     """Clear the cached config (useful for tests)."""
     global _cached_config
     _cached_config = None
+
+
+def resolve_group_id(author: str, config: FullConfig) -> str:
+    """Resolve a Graphiti group ID for the given author.
+
+    Resolution order:
+      1. Check group_id_map for the author name
+      2. If found, use the mapped value
+      3. If not, use {prefix}{author}
+    """
+    mapped = config.graphiti.group_id_map.get(author)
+    if mapped:
+        return mapped
+    return f"{config.graphiti.group_id_prefix}{author}"
