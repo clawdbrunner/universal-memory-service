@@ -28,6 +28,7 @@ def _create_test_app(**state_overrides) -> FastAPI:
     # Default mocks
     mock_config = MagicMock()
     mock_config.memory.data_dir = "/tmp/test-memory-data"
+    mock_config.service.auth_token = None  # disable auth for tests
 
     app.state.config = state_overrides.get("config", mock_config)
     app.state.pipeline = state_overrides.get("pipeline", AsyncMock())
@@ -241,29 +242,29 @@ class TestWriteEndpoint:
 
 
 class TestReadEndpoint:
-    def test_read_existing_file(self, app, client):
+    def test_read_existing_file(self, tmp_path):
+        app = _create_test_app()
+        app.state.config.memory.data_dir = str(tmp_path)
+
+        # Create a real file so is_file() and _validate_path work
+        target = tmp_path / "shared" / "MEMORY.md"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("file contents here")
+
         app.state.file_writer.read_file = AsyncMock(return_value="file contents here")
-
-        with patch("pathlib.Path") as MockPath:
-            mock_full = MagicMock()
-            mock_full.is_file.return_value = True
-            MockPath.return_value.__truediv__ = MagicMock(return_value=mock_full)
-
-            response = client.get("/api/v1/read/shared/MEMORY.md")
+        client = TestClient(app)
+        response = client.get("/api/v1/read/shared/MEMORY.md")
 
         assert response.status_code == 200
         data = response.json()
         assert data["content"] == "file contents here"
         assert data["path"] == "shared/MEMORY.md"
 
-    def test_read_not_found(self, app, client):
-        with patch("pathlib.Path") as MockPath:
-            mock_full = MagicMock()
-            mock_full.is_file.return_value = False
-            MockPath.return_value.__truediv__ = MagicMock(return_value=mock_full)
-
-            response = client.get("/api/v1/read/nonexistent.md")
-
+    def test_read_not_found(self, tmp_path):
+        app = _create_test_app()
+        app.state.config.memory.data_dir = str(tmp_path)
+        client = TestClient(app)
+        response = client.get("/api/v1/read/nonexistent.md")
         assert response.status_code == 404
 
 
@@ -300,89 +301,87 @@ class TestListEndpoint:
 
 
 class TestEditEndpoint:
-    def test_edit_success(self, app, client):
+    def test_edit_success(self, tmp_path):
+        app = _create_test_app()
+        app.state.config.memory.data_dir = str(tmp_path)
         app.state.file_writer.edit_content = AsyncMock(return_value=True)
         app.state.indexer.index_file = AsyncMock(return_value=IndexResult(2, True))
         app.state.graphiti_writer.write = AsyncMock(return_value={})
 
-        with patch("pathlib.Path") as MockPath:
-            mock_full = MagicMock()
-            mock_full.is_file.return_value = True
-            mock_full.__str__ = MagicMock(return_value="/tmp/test.md")
-            MockPath.return_value.__truediv__ = MagicMock(return_value=mock_full)
+        target = tmp_path / "shared" / "MEMORY.md"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("old value")
 
-            response = client.post(
-                "/api/v1/edit",
-                json={
-                    "path": "shared/MEMORY.md",
-                    "old_text": "old value",
-                    "new_text": "new value",
-                    "targets": ["file", "graphiti"],
-                },
-            )
+        client = TestClient(app)
+        response = client.post(
+            "/api/v1/edit",
+            json={
+                "path": "shared/MEMORY.md",
+                "old_text": "old value",
+                "new_text": "new value",
+                "targets": ["file", "graphiti"],
+            },
+        )
 
         assert response.status_code == 200
         data = response.json()
         assert data["ok"] is True
         assert data["graphiti_updated"] is True
 
-    def test_edit_file_not_found(self, app, client):
-        with patch("pathlib.Path") as MockPath:
-            mock_full = MagicMock()
-            mock_full.is_file.return_value = False
-            MockPath.return_value.__truediv__ = MagicMock(return_value=mock_full)
-
-            response = client.post(
-                "/api/v1/edit",
-                json={
-                    "path": "gone.md",
-                    "old_text": "x",
-                    "new_text": "y",
-                },
-            )
-
+    def test_edit_file_not_found(self, tmp_path):
+        app = _create_test_app()
+        app.state.config.memory.data_dir = str(tmp_path)
+        client = TestClient(app)
+        response = client.post(
+            "/api/v1/edit",
+            json={
+                "path": "gone.md",
+                "old_text": "x",
+                "new_text": "y",
+            },
+        )
         assert response.status_code == 404
 
-    def test_edit_old_text_not_found(self, app, client):
+    def test_edit_old_text_not_found(self, tmp_path):
+        app = _create_test_app()
+        app.state.config.memory.data_dir = str(tmp_path)
         app.state.file_writer.edit_content = AsyncMock(
             side_effect=ValueError("old_text not found")
         )
 
-        with patch("pathlib.Path") as MockPath:
-            mock_full = MagicMock()
-            mock_full.is_file.return_value = True
-            MockPath.return_value.__truediv__ = MagicMock(return_value=mock_full)
+        target = tmp_path / "test.md"
+        target.write_text("some content")
 
-            response = client.post(
-                "/api/v1/edit",
-                json={
-                    "path": "test.md",
-                    "old_text": "nonexistent",
-                    "new_text": "new",
-                },
-            )
-
+        client = TestClient(app)
+        response = client.post(
+            "/api/v1/edit",
+            json={
+                "path": "test.md",
+                "old_text": "nonexistent",
+                "new_text": "new",
+            },
+        )
         assert response.status_code == 400
 
-    def test_edit_without_graphiti_target(self, app, client):
+    def test_edit_without_graphiti_target(self, tmp_path):
+        app = _create_test_app()
+        app.state.config.memory.data_dir = str(tmp_path)
         app.state.file_writer.edit_content = AsyncMock(return_value=True)
         app.state.indexer.index_file = AsyncMock(return_value=IndexResult(1, True))
 
-        with patch("pathlib.Path") as MockPath:
-            mock_full = MagicMock()
-            mock_full.is_file.return_value = True
-            mock_full.__str__ = MagicMock(return_value="/tmp/test.md")
-            MockPath.return_value.__truediv__ = MagicMock(return_value=mock_full)
+        target = tmp_path / "test.md"
+        target.write_text("old content")
 
-            response = client.post(
-                "/api/v1/edit",
-                json={
-                    "path": "test.md",
-                    "old_text": "old",
-                    "new_text": "new",
-                    "targets": ["file"],
-                },
-            )
+        client = TestClient(app)
+        response = client.post(
+            "/api/v1/edit",
+            json={
+                "path": "test.md",
+                "old_text": "old",
+                "new_text": "new",
+                "targets": ["file"],
+            },
+        )
 
         assert response.status_code == 200
         assert "graphiti_updated" not in response.json()

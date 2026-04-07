@@ -77,8 +77,11 @@ END;
 CREATE TABLE IF NOT EXISTS embeddings (
     chunk_id TEXT PRIMARY KEY,
     embedding BLOB NOT NULL,
+    file_path TEXT NOT NULL DEFAULT '',
     FOREIGN KEY (chunk_id) REFERENCES chunks(id) ON DELETE CASCADE
 );
+
+CREATE INDEX IF NOT EXISTS idx_embeddings_file_path ON embeddings(file_path);
 
 CREATE TABLE IF NOT EXISTS file_state (
     file_path TEXT PRIMARY KEY,
@@ -119,6 +122,17 @@ async def init_db(db_path: str | None = None) -> None:
             await db.commit()
         except Exception:
             pass  # Column already exists, that's fine
+
+    # Migrate: add file_path column to embeddings table.
+    async with aiosqlite.connect(path) as db:
+        try:
+            await db.execute(
+                "ALTER TABLE embeddings ADD COLUMN file_path TEXT NOT NULL DEFAULT ''"
+            )
+            logger.info("Added file_path column to embeddings table")
+            await db.commit()
+        except Exception:
+            pass  # Column already exists
 
 
 @contextlib.asynccontextmanager

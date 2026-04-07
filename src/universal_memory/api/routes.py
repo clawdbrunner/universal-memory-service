@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import time
+from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from ..models import (
     EditRequest,
@@ -17,7 +18,35 @@ from ..models import (
     WriteResponse,
 )
 
-router = APIRouter(prefix="/api/v1")
+# ------------------------------------------------------------------
+# Auth
+# ------------------------------------------------------------------
+
+
+def _check_auth(request: Request) -> None:
+    """Validate Bearer token if auth_token is configured."""
+    token = request.app.state.config.service.auth_token
+    if not token:
+        return
+    auth = request.headers.get("authorization", "")
+    if auth != f"Bearer {token}":
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+
+# ------------------------------------------------------------------
+# Path validation
+# ------------------------------------------------------------------
+
+
+def _validate_path(file_path: str, data_dir: Path) -> Path:
+    """Resolve *file_path* relative to *data_dir* and reject traversals."""
+    resolved = (data_dir / file_path).resolve()
+    if not str(resolved).startswith(str(data_dir.resolve())):
+        raise HTTPException(status_code=403, detail="Path outside allowed directory")
+    return resolved
+
+
+router = APIRouter(prefix="/api/v1", dependencies=[Depends(_check_auth)])
 
 
 # ------------------------------------------------------------------
@@ -99,9 +128,8 @@ async def write(request: Request, body: dict) -> dict:
 async def read_file(request: Request, path: str) -> dict:
     """Read a file from the data directory."""
     state = _state(request)
-    from pathlib import Path
-
-    full = Path(state.config.memory.data_dir) / path
+    data_dir = Path(state.config.memory.data_dir)
+    full = _validate_path(path, data_dir)
     if not full.is_file():
         raise HTTPException(status_code=404, detail="File not found")
     content = await state.file_writer.read_file(full)
@@ -117,6 +145,8 @@ async def read_file(request: Request, path: str) -> dict:
 async def list_files(request: Request, namespace: str) -> dict:
     """List files under a namespace."""
     state = _state(request)
+    data_dir = Path(state.config.memory.data_dir)
+    _validate_path(namespace, data_dir)
     files = await state.file_writer.list_files(namespace)
     return {"namespace": namespace, "files": files}
 
@@ -131,9 +161,8 @@ async def edit(request: Request, body: dict) -> dict:
     """Surgical find-and-replace in a file."""
     state = _state(request)
     req = EditRequest.from_dict(body)
-    from pathlib import Path
-
-    full = Path(state.config.memory.data_dir) / req.path
+    data_dir = Path(state.config.memory.data_dir)
+    full = _validate_path(req.path, data_dir)
     if not full.is_file():
         raise HTTPException(status_code=404, detail="File not found")
 

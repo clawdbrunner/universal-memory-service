@@ -18,13 +18,16 @@ class VectorStore:
     Each search queries SQLite directly — no in-memory cache.
     """
 
-    async def upsert(self, chunk_id: str, embedding: list[float]) -> None:
+    async def upsert(
+        self, chunk_id: str, embedding: list[float], file_path: str = ""
+    ) -> None:
         """Insert or update an embedding in SQLite."""
         blob = json.dumps(embedding)
         async with get_connection() as db:
             await db.execute(
-                "INSERT OR REPLACE INTO embeddings (chunk_id, embedding) VALUES (?, ?)",
-                (chunk_id, blob),
+                "INSERT OR REPLACE INTO embeddings (chunk_id, embedding, file_path) "
+                "VALUES (?, ?, ?)",
+                (chunk_id, blob, file_path),
             )
             await db.commit()
 
@@ -75,11 +78,14 @@ class VectorStore:
         return scores[:top_k]
 
     async def delete_for_file(self, file_path: str) -> None:
-        """Delete all embeddings for a given file path."""
+        """Delete all embeddings for a given file path.
+
+        Uses the file_path column directly (no JOIN on chunks needed), so
+        this works even if chunks have already been deleted.
+        """
         async with get_connection() as db:
             await db.execute(
-                "DELETE FROM embeddings WHERE chunk_id IN "
-                "(SELECT id FROM chunks WHERE file_path = ?)",
+                "DELETE FROM embeddings WHERE file_path = ?",
                 (file_path,),
             )
             await db.commit()

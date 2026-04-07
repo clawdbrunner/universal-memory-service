@@ -12,7 +12,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .api.routes import router
-from .config import get_config
+from .config import get_config, load_config
 from .db import init_db
 from .indexer import Indexer, _should_ignore
 from .retrieval.embeddings import EmbeddingService
@@ -109,3 +109,10 @@ app.add_middleware(
 )
 
 app.include_router(router)
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    cfg = load_config()
+    uvicorn.run(app, host=cfg.service.host, port=cfg.service.port)

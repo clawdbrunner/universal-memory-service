@@ -48,7 +48,11 @@ def _default_author() -> str:
 
 
 async def _ensure_init() -> None:
-    """Lazy-initialise services on first tool call."""
+    """Lazy-initialise services on first tool call.
+
+    A single EmbeddingService instance is shared across the pipeline and
+    the indexer so that both use the same provider and dimensions.
+    """
     global _pipeline, _file_writer, _graphiti_writer, _indexer, _config
 
     if _pipeline is not None:
@@ -59,7 +63,7 @@ async def _ensure_init() -> None:
 
     embedding = EmbeddingService()
     vector = VectorStore()
-    _pipeline = RetrievalPipeline()
+    _pipeline = RetrievalPipeline(vector_store=vector, embeddings=embedding)
     _file_writer = FileWriter()
     _graphiti_writer = GraphitiWriter()
     _indexer = Indexer(embedding, vector)

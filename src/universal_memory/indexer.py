@@ -138,7 +138,7 @@ class Indexer:
         if embeddings_ok:
             for chunk, emb in zip(chunks, embeddings):
                 if emb:
-                    await self._vectors.upsert(chunk.id, emb)
+                    await self._vectors.upsert(chunk.id, emb, file_path=file_path)
             self._last_embedding_success = _now()
         else:
             self._last_embedding_failure = _now()
@@ -174,9 +174,13 @@ class Indexer:
         return total
 
     async def remove_file(self, file_path: str) -> None:
-        """Remove all indexed data for a file."""
-        await delete_chunks_for_file(file_path)
+        """Remove all indexed data for a file.
+
+        Embeddings are deleted *before* chunks so the JOIN on chunks.id
+        still works (or, when the file_path column is present, directly).
+        """
         await self._vectors.delete_for_file(file_path)
+        await delete_chunks_for_file(file_path)
         # Remove file_state row
         from .db import get_connection
 
