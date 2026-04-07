@@ -57,8 +57,7 @@ class FileWriter:
             return base / "shared" / f"{today}.md"
         if target == "file" and file_path:
             p = Path(file_path)
-            if p.is_absolute():
-                return p
+            # Always resolve relative to base — never return raw absolute paths
             return base / p
         # fallback to daily
         return base / "agents" / author / "logs" / f"{today}.md"

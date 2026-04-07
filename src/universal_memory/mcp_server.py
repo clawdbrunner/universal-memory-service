@@ -263,7 +263,10 @@ async def _handle_write(args: dict) -> list[TextContent]:
 
 
 async def _handle_read(args: dict) -> list[TextContent]:
-    full = Path(_config.memory.data_dir) / args["path"]
+    full = (Path(_config.memory.data_dir) / args["path"]).resolve()
+    data_dir = Path(_config.memory.data_dir).resolve()
+    if not str(full).startswith(str(data_dir)):
+        return [TextContent(type="text", text="Error: path outside allowed directory")]
     if not full.is_file():
         return [TextContent(type="text", text=f"File not found: {args['path']}")]
     content = await _file_writer.read_file(full)
@@ -271,14 +274,22 @@ async def _handle_read(args: dict) -> list[TextContent]:
 
 
 async def _handle_list(args: dict) -> list[TextContent]:
-    files = await _file_writer.list_files(args["namespace"])
+    namespace = args["namespace"]
+    resolved = (Path(_config.memory.data_dir) / namespace).resolve()
+    data_dir = Path(_config.memory.data_dir).resolve()
+    if not str(resolved).startswith(str(data_dir)):
+        return [TextContent(type="text", text="Error: namespace outside allowed directory")]
+    files = await _file_writer.list_files(namespace)
     if not files:
-        return [TextContent(type="text", text=f"No files found under {args['namespace']}")]
+        return [TextContent(type="text", text=f"No files found under {namespace}")]
     return [TextContent(type="text", text="\n".join(files))]
 
 
 async def _handle_edit(args: dict) -> list[TextContent]:
-    full = Path(_config.memory.data_dir) / args["path"]
+    full = (Path(_config.memory.data_dir) / args["path"]).resolve()
+    data_dir = Path(_config.memory.data_dir).resolve()
+    if not str(full).startswith(str(data_dir)):
+        return [TextContent(type="text", text="Error: path outside allowed directory")]
     if not full.is_file():
         return [TextContent(type="text", text=f"File not found: {args['path']}")]
     try:

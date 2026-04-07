@@ -143,7 +143,7 @@ class TestWriteEndpoint:
         app.state.file_writer.resolve_path = MagicMock(
             return_value=Path("/tmp/test-memory-data/agents/alice/logs/2025-01-15.md")
         )
-        app.state.file_writer.write_content = AsyncMock(return_value=Path("/tmp/out.md"))
+        app.state.file_writer.write_content = AsyncMock(return_value=Path("/tmp/test-memory-data/agents/bob/logs/2025-01-15.md"))
         app.state.indexer.index_file = AsyncMock(return_value=IndexResult(3, True))
         app.state.sync_engine.sync_file = AsyncMock(return_value=[])
         app.state.graphiti_writer.write = AsyncMock(return_value={"ok": True})
@@ -166,7 +166,7 @@ class TestWriteEndpoint:
         app.state.graphiti_writer.write.assert_called_once()
 
     def test_write_file_only(self, app, client):
-        app.state.file_writer.resolve_path = MagicMock(return_value=Path("/tmp/out.md"))
+        app.state.file_writer.resolve_path = MagicMock(return_value=Path("/tmp/test-memory-data/agents/bob/logs/2025-01-15.md"))
         app.state.file_writer.write_content = AsyncMock()
         app.state.indexer.index_file = AsyncMock(return_value=IndexResult(1, True))
         app.state.sync_engine.sync_file = AsyncMock(return_value=[])
@@ -201,7 +201,7 @@ class TestWriteEndpoint:
         assert "graphiti" in data["written_to"]
 
     def test_write_triggers_indexing(self, app, client):
-        app.state.file_writer.resolve_path = MagicMock(return_value=Path("/tmp/f.md"))
+        app.state.file_writer.resolve_path = MagicMock(return_value=Path("/tmp/test-memory-data/agents/bob/notes.md"))
         app.state.file_writer.write_content = AsyncMock()
         app.state.indexer.index_file = AsyncMock(return_value=IndexResult(5, True))
         app.state.sync_engine.sync_file = AsyncMock(return_value=[])
@@ -219,7 +219,7 @@ class TestWriteEndpoint:
 
     def test_write_partial_indexing(self, app, client):
         """When embeddings fail, index_status should be 'partial'."""
-        app.state.file_writer.resolve_path = MagicMock(return_value=Path("/tmp/f.md"))
+        app.state.file_writer.resolve_path = MagicMock(return_value=Path("/tmp/test-memory-data/agents/bob/notes.md"))
         app.state.file_writer.write_content = AsyncMock()
         app.state.indexer.index_file = AsyncMock(return_value=IndexResult(5, False))
         app.state.sync_engine.sync_file = AsyncMock(return_value=[])
@@ -557,7 +557,7 @@ class TestAPIGracefulDegradation:
         assert response.status_code == 500
 
     def test_write_indexer_error_still_writes(self, app):
-        app.state.file_writer.resolve_path = MagicMock(return_value=Path("/tmp/f.md"))
+        app.state.file_writer.resolve_path = MagicMock(return_value=Path("/tmp/test-memory-data/agents/bob/notes.md"))
         app.state.file_writer.write_content = AsyncMock()
         app.state.indexer.index_file = AsyncMock(side_effect=RuntimeError("db error"))
         app.state.sync_engine.sync_file = AsyncMock(return_value=[])

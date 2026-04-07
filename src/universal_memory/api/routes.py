@@ -91,6 +91,7 @@ async def write(request: Request, body: dict) -> dict:
             file_path=req.file_path,
             config=state.config,
         )
+        _validate_path(str(path), Path(state.config.memory.data_dir))
         await state.file_writer.write_content(
             path=path,
             content=req.content,
