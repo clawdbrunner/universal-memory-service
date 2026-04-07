@@ -41,7 +41,7 @@ def _check_auth(request: Request) -> None:
 def _validate_path(file_path: str, data_dir: Path) -> Path:
     """Resolve *file_path* relative to *data_dir* and reject traversals."""
     resolved = (data_dir / file_path).resolve()
-    if not str(resolved).startswith(str(data_dir.resolve())):
+    if not resolved.is_relative_to(data_dir.resolve()):
         raise HTTPException(status_code=403, detail="Path outside allowed directory")
     return resolved
 

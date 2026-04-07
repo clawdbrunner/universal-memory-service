@@ -253,6 +253,10 @@ async def _handle_write(args: dict) -> list[TextContent]:
         author=req.author, target=req.target,
         file_path=req.file_path, config=_config,
     )
+    resolved_path = Path(str(path)).resolve()
+    data_dir = Path(_config.memory.data_dir).resolve()
+    if not resolved_path.is_relative_to(data_dir):
+        return [TextContent(type="text", text="Error: path outside allowed directory")]
     await _file_writer.write_content(
         path=path, content=req.content,
         header_format=_config.write.daily_log_header_format, author=req.author,
@@ -265,7 +269,7 @@ async def _handle_write(args: dict) -> list[TextContent]:
 async def _handle_read(args: dict) -> list[TextContent]:
     full = (Path(_config.memory.data_dir) / args["path"]).resolve()
     data_dir = Path(_config.memory.data_dir).resolve()
-    if not str(full).startswith(str(data_dir)):
+    if not full.is_relative_to(data_dir):
         return [TextContent(type="text", text="Error: path outside allowed directory")]
     if not full.is_file():
         return [TextContent(type="text", text=f"File not found: {args['path']}")]
@@ -277,7 +281,7 @@ async def _handle_list(args: dict) -> list[TextContent]:
     namespace = args["namespace"]
     resolved = (Path(_config.memory.data_dir) / namespace).resolve()
     data_dir = Path(_config.memory.data_dir).resolve()
-    if not str(resolved).startswith(str(data_dir)):
+    if not resolved.is_relative_to(data_dir):
         return [TextContent(type="text", text="Error: namespace outside allowed directory")]
     files = await _file_writer.list_files(namespace)
     if not files:
@@ -288,7 +292,7 @@ async def _handle_list(args: dict) -> list[TextContent]:
 async def _handle_edit(args: dict) -> list[TextContent]:
     full = (Path(_config.memory.data_dir) / args["path"]).resolve()
     data_dir = Path(_config.memory.data_dir).resolve()
-    if not str(full).startswith(str(data_dir)):
+    if not full.is_relative_to(data_dir):
         return [TextContent(type="text", text="Error: path outside allowed directory")]
     if not full.is_file():
         return [TextContent(type="text", text=f"File not found: {args['path']}")]
